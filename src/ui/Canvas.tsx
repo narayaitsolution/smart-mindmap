@@ -349,7 +349,7 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
     actions.select({ mapId: map.id, nodeId: node.id });
     const size = nodeSize(node);
     drag.current = { kind: 'resize', mapId: map.id, nodeId: node.id, handle, startX: e.clientX, startY: e.clientY, ...size };
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+    svgRef.current?.setPointerCapture?.(e.pointerId);
   };
 
   const onNodeKey = (e: React.KeyboardEvent<SVGGElement>, map: Mindmap, node: MindNode) => {

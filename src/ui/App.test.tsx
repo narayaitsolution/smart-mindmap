@@ -115,6 +115,16 @@ describe('App', () => {
     expect(Number(node.querySelector('rect.node-box')!.getAttribute('height'))).toBeGreaterThan(40);
   });
 
+  it('captures resize pointers on the canvas so resizing survives moving borders', async () => {
+    const root = await createMap();
+    const svg = document.querySelector('svg.canvas')!;
+    const capture = vi.fn();
+    svg.setPointerCapture = capture;
+    const edge = root.parentElement!.querySelector('.resize-edge[data-handle="e"]')!;
+    fireEvent.pointerDown(edge, { clientX: 500, clientY: 300, pointerId: 7, button: 0 });
+    expect(capture).toHaveBeenCalledWith(7);
+  });
+
   it('resizes a node by dragging its border and resets with a double click', async () => {
     const root = await createMap();
     const box = () => root.querySelector('rect.node-box') as SVGRectElement;

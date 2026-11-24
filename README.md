@@ -41,6 +41,16 @@ Optional Google Drive backup: copy `.env.example` to `.env` and set `VITE_GOOGLE
 | `npm run build` | `tsc --noEmit && vite build` | Type-check and build to `dist/` |
 | `npm run preview` | `vite preview` | Serve the production build (port 4173) |
 | `npm test` | `vitest run` | Run unit and component tests (jsdom) |
+| `npm run verify` | `bash scripts/verify.sh` | Run tests and build; fails if either fails |
+| `npm run hooks:install` | `git config core.hooksPath .githooks` | Enable the tracked `pre-push` hook (once per clone) |
+| `npm run push:safe -- "message"` | `bash scripts/safe-push.sh` | Verify, then commit all changes and push the current branch (never forced) |
+
+## Safe push automation
+
+Git cannot detect arbitrary file edits by itself. Pushes are gated in two ways:
+
+- `npm run hooks:install` once per clone. The tracked `.githooks/pre-push` hook then runs tests and build before every `git push` and aborts on failure. Hooks are local, so each clone must install them, and `git push --no-verify` bypasses them.
+- `npm run push:safe -- "message"` runs verification, commits, and pushes in one step. It refuses to stage `.env` files.
 
 ## Docker
 

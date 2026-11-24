@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify": "bash scripts/verify.sh",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "push:safe": "bash scripts/safe-push.sh"
   },
   "dependencies": {
     "react": "^19.3.1",

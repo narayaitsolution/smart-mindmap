@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Blocks push when tests or build fail. Install: npm run hooks:install
+set -euo pipefail
+if [ "${SMARTMINDMAP_SKIP_VERIFY:-}" = "1" ]; then
+  exit 0
+fi
+echo "pre-push: running tests and build..."
+"$(git rev-parse --show-toplevel)/scripts/verify.sh" || {
+  echo "pre-push: verification failed, push aborted." >&2
+  exit 1
+}

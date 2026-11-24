@@ -3,11 +3,11 @@
    every theme because default edges are black and nodes are transparent; exports use the same white. */
 :root {
   color-scheme: light dark;
-  --bg: #f4f2ee;
+  --bg: #f4f4f4;
   --surface: #ffffff;
-  --text: #1c1b19;
-  --muted: #5c5a55;
-  --border: #b9b5ab;
+  --text: #1c1c1c;
+  --muted: #565656;
+  --border: #c6c6c6;
   --accent: #0b6b63;
   --accent-text: #ffffff;
   --danger: #a3261c;
@@ -20,15 +20,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --bg: #0b1a33;
-    --surface: #12294f;
-    --text: #eaf1ff;
-    --muted: #a9bde0;
-    --border: #7893c8;
-    --accent: #5aa9ff;
-    --accent-text: #06142b;
+    --bg: #111111;
+    --surface: #1c1c1c;
+    --text: #ededed;
+    --muted: #b4b4b4;
+    --border: #707070;
+    --accent: #70c9bd;
+    --accent-text: #10221f;
     --danger: #ff9a90;
-    --focus: #8ec5ff;
+    --focus: #70c9bd;
   }
 }
 
@@ -38,42 +38,15 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #0b1a33;
-  --surface: #12294f;
-  --text: #eaf1ff;
-  --muted: #a9bde0;
-  --border: #7893c8;
-  --accent: #5aa9ff;
-  --accent-text: #06142b;
+  --bg: #111111;
+  --surface: #1c1c1c;
+  --text: #ededed;
+  --muted: #b4b4b4;
+  --border: #707070;
+  --accent: #70c9bd;
+  --accent-text: #10221f;
   --danger: #ff9a90;
-  --focus: #8ec5ff;
-}
-
-/* Chrome (top toolbar, sidebar, bottom bar) is dark blue in every theme; the canvas stays light paper. */
-.topbar,
-.inspector,
-.zoombar {
-  --surface: #12294f;
-  --text: #eaf1ff;
-  --muted: #a9bde0;
-  --border: #7893c8;
-  --accent: #5aa9ff;
-  --accent-text: #06142b;
-  --danger: #ff9a90;
-  --focus: #8ec5ff;
-  color: var(--text);
-}
-.topbar {
-  background: #0f2347;
-  border-bottom-color: #2b4a85;
-}
-.inspector {
-  background: #12294f;
-  border-color: #2b4a85;
-}
-.zoombar {
-  background: #0f2347;
-  border-color: #2b4a85;
+  --focus: #70c9bd;
 }
 
 * {
@@ -145,7 +118,7 @@ input[type='text'] {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  min-height: 32px;
+  min-height: 36px;
   padding: 3px 10px;
   font-size: 0.9rem;
 }
@@ -430,7 +403,8 @@ button.icon {
   height: 100%;
   min-height: 0;
   margin: 0;
-  padding: 0 8px;
+  padding: 0 16px;
+  overflow-wrap: anywhere;
   resize: none;
   overflow: hidden;
   font-family: inherit;
