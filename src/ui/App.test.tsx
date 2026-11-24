@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { exportJson } from '../io/json';
@@ -219,6 +220,160 @@ describe('App', () => {
     expect(vp()).toBe(vp0);
     expect(root.getAttribute('transform')).not.toBe(pos);
     expect(Number(root.querySelector('rect.node-box')!.getAttribute('height'))).toBe(40);
+  });
+
+  describe('touch gestures', () => {
+    const vpOf = () => {
+      const m = /translate\(([-\d.e]+) ([-\d.e]+)\) scale\(([-\d.e]+)\)/.exec(document.querySelector('svg.canvas > g')!.getAttribute('transform')!)!;
+      return { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3]) };
+    };
+    const touch = (pointerId: number, x: number, y: number) => ({ pointerId, pointerType: 'touch', clientX: x, clientY: y, button: 0, isPrimary: pointerId === 1 });
+    const svg = () => document.querySelector('svg.canvas') as SVGSVGElement;
+
+    it('keeps touch-action none on the canvas', () => {
+      expect(readFileSync('src/styles.css', 'utf8')).toMatch(/\.canvas\s*\{[^}]*touch-action:\s*none/);
+    });
+
+    it('pans the background with one finger', async () => {
+      await createMap();
+      const v0 = vpOf();
+      fireEvent.pointerDown(svg(), touch(1, 300, 300));
+      fireEvent.pointerMove(svg(), touch(1, 340, 280));
+      fireEvent.pointerUp(svg(), touch(1, 340, 280));
+      expect(vpOf()).toEqual({ x: v0.x + 40, y: v0.y - 20, zoom: v0.zoom });
+      fireEvent.pointerMove(svg(), touch(1, 400, 400));
+      expect(vpOf()).toEqual({ x: v0.x + 40, y: v0.y - 20, zoom: v0.zoom });
+    });
+
+    it('pinch-zooms around the midpoint between the fingers', async () => {
+      await createMap();
+      const v0 = vpOf();
+      fireEvent.pointerDown(svg(), touch(1, 250, 300));
+      fireEvent.pointerDown(svg(), touch(2, 350, 300));
+      fireEvent.pointerMove(svg(), touch(1, 200, 300));
+      fireEvent.pointerMove(svg(), touch(2, 400, 300));
+      const v = vpOf();
+      expect(v.zoom).toBeCloseTo(v0.zoom * 2);
+      expect(v.x).toBeCloseTo(300 - (300 - v0.x) * 2);
+      expect(v.y).toBeCloseTo(300 - (300 - v0.y) * 2);
+    });
+
+    it('translates with the midpoint while pinching', async () => {
+      await createMap();
+      const v0 = vpOf();
+      fireEvent.pointerDown(svg(), touch(1, 250, 300));
+      fireEvent.pointerDown(svg(), touch(2, 350, 300));
+      fireEvent.pointerMove(svg(), touch(1, 280, 320));
+      fireEvent.pointerMove(svg(), touch(2, 380, 320));
+      const v = vpOf();
+      expect(v.zoom).toBeCloseTo(v0.zoom);
+      expect(v.x).toBeCloseTo(v0.x + 30);
+      expect(v.y).toBeCloseTo(v0.y + 20);
+    });
+
+    it('resumes panning with the remaining finger without a jump after one lifts', async () => {
+      await createMap();
+      fireEvent.pointerDown(svg(), touch(1, 250, 300));
+      fireEvent.pointerDown(svg(), touch(2, 350, 300));
+      fireEvent.pointerMove(svg(), touch(2, 450, 300));
+      const zoomed = vpOf();
+      fireEvent.pointerUp(svg(), touch(1, 250, 300));
+      expect(vpOf()).toEqual(zoomed);
+      fireEvent.pointerMove(svg(), touch(2, 460, 310));
+      expect(vpOf()).toEqual({ x: zoomed.x + 10, y: zoomed.y + 10, zoom: zoomed.zoom });
+      fireEvent.pointerUp(svg(), touch(2, 460, 310));
+      fireEvent.pointerMove(svg(), touch(2, 600, 600));
+      expect(vpOf().x).toBe(zoomed.x + 10);
+    });
+
+    it('ends the gesture on pointercancel and ignores a third finger', async () => {
+      await createMap();
+      fireEvent.pointerDown(svg(), touch(1, 250, 300));
+      fireEvent.pointerDown(svg(), touch(2, 350, 300));
+      fireEvent.pointerDown(svg(), touch(3, 300, 100));
+      fireEvent.pointerMove(svg(), touch(3, 300, 0));
+      const v = vpOf();
+      fireEvent.pointerCancel(svg(), touch(1, 250, 300));
+      fireEvent.pointerCancel(svg(), touch(2, 350, 300));
+      fireEvent.pointerCancel(svg(), touch(3, 300, 0));
+      fireEvent.pointerMove(svg(), touch(2, 500, 500));
+      expect(vpOf()).toEqual(v);
+      fireEvent.pointerDown(svg(), touch(4, 100, 100));
+      fireEvent.pointerMove(svg(), touch(4, 110, 100));
+      expect(vpOf().x).toBe(v.x + 10);
+    });
+
+    it('drags a node with one finger without panning, and ignores a second finger on the background', async () => {
+      const root = await createMap();
+      const v0 = vpOf();
+      const pos = root.getAttribute('transform');
+      fireEvent.pointerDown(root, touch(1, 300, 300));
+      fireEvent.pointerDown(svg(), touch(2, 100, 100));
+      fireEvent.pointerMove(svg(), touch(2, 50, 100));
+      fireEvent.pointerMove(root, touch(1, 330, 320));
+      fireEvent.pointerUp(root, touch(1, 330, 320));
+      expect(vpOf()).toEqual(v0);
+      expect(root.getAttribute('transform')).not.toBe(pos);
+    });
+
+    it('does not start a node drag or resize with a second finger while a gesture is active', async () => {
+      const root = await createMap();
+      const pos = root.getAttribute('transform');
+      const edge = root.parentElement!.querySelector('.resize-edge[data-handle="e"]')!;
+      const v0 = vpOf();
+      fireEvent.pointerDown(svg(), touch(1, 250, 300));
+      fireEvent.pointerDown(root, touch(2, 350, 300));
+      fireEvent.pointerDown(edge, touch(3, 350, 300));
+      fireEvent.pointerMove(root, touch(2, 450, 300));
+      expect(root.getAttribute('transform')).toBe(pos);
+      expect(vpOf().zoom).toBeGreaterThan(v0.zoom);
+    });
+
+    it('resizes from an edge with one finger and ignores a second finger', async () => {
+      const root = await createMap();
+      const box = () => Number(root.querySelector('rect.node-box')!.getAttribute('width'));
+      const w0 = box();
+      const v0 = vpOf();
+      const edge = root.parentElement!.querySelector('.resize-edge[data-handle="e"]')!;
+      fireEvent.pointerDown(edge, touch(1, 500, 300));
+      fireEvent.pointerDown(svg(), touch(2, 100, 100));
+      fireEvent.pointerMove(svg(), touch(2, 40, 100));
+      fireEvent.pointerMove(svg(), touch(1, 540, 300));
+      fireEvent.pointerUp(svg(), touch(1, 540, 300));
+      expect(box()).toBeCloseTo(w0 + 40 / v0.zoom);
+      expect(vpOf()).toEqual(v0);
+    });
+
+    it('stops a node drag on pointercancel', async () => {
+      const root = await createMap();
+      fireEvent.pointerDown(root, touch(1, 300, 300));
+      fireEvent.pointerMove(root, touch(1, 320, 300));
+      const pos = root.getAttribute('transform');
+      fireEvent.pointerCancel(root, touch(1, 320, 300));
+      fireEvent.pointerMove(svg(), touch(1, 400, 300));
+      expect(root.getAttribute('transform')).toBe(pos);
+    });
+
+    it('leaves the inline editor alone: touching it neither pans nor pinches', async () => {
+      const root = await createMap();
+      fireEvent.doubleClick(root);
+      const input = screen.getByLabelText('Text');
+      const v0 = vpOf();
+      fireEvent.pointerDown(input, touch(1, 300, 300));
+      fireEvent.pointerMove(input, touch(1, 360, 300));
+      fireEvent.pointerUp(input, touch(1, 360, 300));
+      expect(vpOf()).toEqual(v0);
+      expect(screen.getByLabelText('Text')).toBe(input);
+    });
+
+    it('keeps mouse panning working and independent of touch state', async () => {
+      await createMap();
+      const v0 = vpOf();
+      fireEvent.pointerDown(svg(), { pointerId: 9, pointerType: 'mouse', clientX: 300, clientY: 300, button: 0 });
+      fireEvent.pointerMove(svg(), { pointerId: 9, pointerType: 'mouse', clientX: 320, clientY: 310 });
+      fireEvent.pointerUp(svg(), { pointerId: 9, pointerType: 'mouse', clientX: 320, clientY: 310 });
+      expect(vpOf()).toEqual({ x: v0.x + 20, y: v0.y + 10, zoom: v0.zoom });
+    });
   });
 
   it('shows long text in full, wrapped, without an ellipsis', async () => {

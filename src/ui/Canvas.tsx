@@ -18,7 +18,7 @@ import {
   type Side,
 } from '../model/mindmap';
 import { notePreview } from '../model/note';
-import { zoomAt } from '../model/viewport';
+import { pinchViewport, zoomAt } from '../model/viewport';
 import type { Viewport } from '../model/workspace';
 import type { MessageKey } from '../i18n';
 
@@ -58,10 +58,14 @@ type Handle = 'e' | 'w' | 'n' | 's';
 const RESIZE_STEP = 16;
 const RESIZE_STEP_LARGE = 64;
 
+type Pt = { x: number; y: number };
+
 type Drag =
-  | { kind: 'resize'; mapId: string; nodeId: string; handle: Handle; startX: number; startY: number; width: number; height: number }
-  | { kind: 'node'; mapId: string; nodeId: string; startX: number; startY: number; originX: number; originY: number }
-  | { kind: 'pan'; startX: number; startY: number; originX: number; originY: number };
+  | { kind: 'resize'; id: number; mapId: string; nodeId: string; handle: Handle; startX: number; startY: number; width: number; height: number }
+  | { kind: 'node'; id: number; mapId: string; nodeId: string; startX: number; startY: number; originX: number; originY: number }
+  | { kind: 'pan'; id: number; touch: boolean; startX: number; startY: number; originX: number; originY: number; last: Pt }
+  /** Two touch fingers: `from` are their positions when the pinch began, `origin` the viewport then. */
+  | { kind: 'pinch'; ids: [number, number]; from: [Pt, Pt]; now: [Pt, Pt]; origin: Viewport };
 
 /**
  * Inline text editor laid over a node. Enter or blur saves, Escape cancels.
@@ -337,18 +341,21 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
 
   const onNodeDown = (e: React.PointerEvent<SVGGElement>, map: Mindmap, node: MindNode) => {
     if (e.button !== 0) return;
+    // A touch while another gesture runs belongs to that gesture: let it reach the canvas.
+    if (e.pointerType === 'touch' && drag.current) return;
     e.stopPropagation();
     actions.select({ mapId: map.id, nodeId: node.id });
-    drag.current = { kind: 'node', mapId: map.id, nodeId: node.id, startX: e.clientX, startY: e.clientY, originX: node.x, originY: node.y };
+    drag.current = { kind: 'node', id: e.pointerId, mapId: map.id, nodeId: node.id, startX: e.clientX, startY: e.clientY, originX: node.x, originY: node.y };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
 
   const onResizeDown = (e: React.PointerEvent<SVGElement>, map: Mindmap, node: MindNode, handle: Handle) => {
     if (e.button !== 0) return;
+    if (e.pointerType === 'touch' && drag.current) return;
     e.stopPropagation();
     actions.select({ mapId: map.id, nodeId: node.id });
     const size = nodeSize(node);
-    drag.current = { kind: 'resize', mapId: map.id, nodeId: node.id, handle, startX: e.clientX, startY: e.clientY, ...size };
+    drag.current = { kind: 'resize', id: e.pointerId, mapId: map.id, nodeId: node.id, handle, startX: e.clientX, startY: e.clientY, ...size };
     svgRef.current?.setPointerCapture?.(e.pointerId);
   };
 
@@ -412,9 +419,22 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
     }
   };
 
+  const local = (e: React.PointerEvent): Pt => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    return { x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0) };
+  };
+
   const onMove = (e: React.PointerEvent) => {
     const d = drag.current;
     if (!d) return;
+    if (d.kind === 'pinch') {
+      const i = d.ids.indexOf(e.pointerId);
+      if (i < 0) return;
+      d.now[i] = local(e);
+      actions.setViewport(pinchViewport(d.origin, d.from, d.now));
+      return;
+    }
+    if (e.pointerId !== d.id) return;
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
     if (d.kind === 'resize') {
@@ -429,13 +449,44 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
       } else patch.height = d.height + dy / viewport.zoom;
       actions.resize(d.mapId, d.nodeId, patch);
     } else if (d.kind === 'node') actions.move(d.mapId, d.nodeId, d.originX + dx / viewport.zoom, d.originY + dy / viewport.zoom);
-    else actions.setViewport({ ...viewport, x: d.originX + dx, y: d.originY + dy });
+    else {
+      d.last = local(e);
+      actions.setViewport({ ...viewport, x: d.originX + dx, y: d.originY + dy });
+    }
   };
 
   const end = (e: React.PointerEvent) => {
-    if (!drag.current) return;
-    drag.current = null;
+    const d = drag.current;
+    if (!d) return;
     (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
+    if (d.kind === 'pinch') {
+      const i = d.ids.indexOf(e.pointerId);
+      if (i < 0) return;
+      // The finger left behind keeps panning from where it is, so the map does not jump.
+      const rest = 1 - i;
+      const vp = vpRef.current;
+      drag.current = { kind: 'pan', id: d.ids[rest], touch: true, startX: d.now[rest].x, startY: d.now[rest].y, originX: vp.x, originY: vp.y, last: d.now[rest] };
+      return;
+    }
+    if (e.pointerId === d.id) drag.current = null;
+  };
+
+  const onCanvasDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return;
+    const d = drag.current;
+    if (e.pointerType === 'touch' && d) {
+      // Second finger on a pan turns it into a pinch; any other running gesture, or a third finger, wins.
+      if (d.kind === 'pan' && d.touch && d.id !== e.pointerId) {
+        const vp = vpRef.current;
+        drag.current = { kind: 'pinch', ids: [d.id, e.pointerId], from: [d.last, local(e)], now: [d.last, local(e)], origin: vp };
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+      }
+      return;
+    }
+    actions.select(null);
+    const at = local(e);
+    drag.current = { kind: 'pan', id: e.pointerId, touch: e.pointerType === 'touch', startX: e.clientX, startY: e.clientY, originX: viewport.x, originY: viewport.y, last: at };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
   };
 
   return (
@@ -444,12 +495,7 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
       className="canvas"
       role="group"
       aria-label={t('canvas.label')}
-      onPointerDown={(e) => {
-        if (e.button !== 0) return;
-        actions.select(null);
-        drag.current = { kind: 'pan', startX: e.clientX, startY: e.clientY, originX: viewport.x, originY: viewport.y };
-        e.currentTarget.setPointerCapture?.(e.pointerId);
-      }}
+      onPointerDown={onCanvasDown}
       onPointerMove={onMove}
       onPointerUp={end}
       onPointerCancel={end}
