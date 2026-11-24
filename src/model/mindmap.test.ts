@@ -6,7 +6,9 @@ import {
   createMindmap,
   deleteNode,
   deleteNodeKeepChildren,
+  descendantIds,
   edgePath,
+  GAP_Y,
   layoutTree,
   mapBounds,
   MIN_NODE_WIDTH,
@@ -14,6 +16,7 @@ import {
   nodeLines,
   nodeSize,
   resizeNode,
+  resolveSiblingOverlaps,
   toggleCollapse,
   updateNode,
   visibleNodes,
@@ -343,3 +346,103 @@ describe('node wrapping and manual size', () => {
 function sideOfLeft(map: ReturnType<typeof base>): boolean {
   return map.nodes.c1.x + nodeSize(map.nodes.c1).width < map.nodes[map.rootId].x;
 }
+
+describe('resolveSiblingOverlaps', () => {
+  const bottom = (map: ReturnType<typeof base>, id: string) => map.nodes[id].y + nodeSize(map.nodes[id]).height;
+  const twoKids = (side: 'left' | 'right' = 'right') => {
+    let map = base();
+    map = addChild(map, map.rootId, 'c1', 'Satu', side);
+    map = addChild(map, map.rootId, 'c2', 'Dua', side);
+    return map;
+  };
+
+  it('pushes the next sibling block down when adding children grows a block', () => {
+    let map = twoKids();
+    const before = map.nodes.c2.y;
+    map = addChild(map, 'c1', 'g1');
+    map = addChild(map, 'c1', 'g2');
+    map = addChild(map, 'c1', 'g3');
+    const blockBottom = Math.max(...['c1', ...descendantIds(map, 'c1')].map((id) => bottom(map, id)));
+    expect(map.nodes.c2.y).toBe(blockBottom + GAP_Y);
+    expect(map.nodes.c2.y).toBeGreaterThan(before);
+  });
+
+  it('keeps a dragged block in place and moves the sibling it lands on by the minimum gap', () => {
+    let map = twoKids();
+    map = moveSubtree(map, 'c2', map.nodes.c2.x, map.nodes.c1.y + 10);
+    const dragged = map.nodes.c2;
+    const next = resolveSiblingOverlaps(map, 'c2');
+    expect(next.nodes.c2).toEqual(dragged);
+    expect(bottom(next, 'c1') + GAP_Y).toBe(dragged.y);
+  });
+
+  it('resolves overlaps on the left side without touching x', () => {
+    let map = twoKids('left');
+    map = addChild(map, 'c1', 'g1', 'Anak', 'left');
+    map = addChild(map, 'c1', 'g2', 'Anak', 'left');
+    expect(map.nodes.c2.y).toBeGreaterThanOrEqual(bottom(map, 'g2') + GAP_Y);
+    expect(map.nodes.c2.x + nodeSize(map.nodes.c2).width).toBeLessThan(map.nodes[map.rootId].x);
+    expect(resolveSiblingOverlaps(map, 'c1')).toBe(map);
+  });
+
+  it('moves a shifted subtree rigidly, edges intact', () => {
+    let map = twoKids();
+    map = addChild(map, 'c2', 'g1');
+    map = addChild(map, 'c2', 'g2');
+    const rel = (m: typeof map) => ['g1', 'g2'].map((id) => [m.nodes[id].x - m.nodes.c2.x, m.nodes[id].y - m.nodes.c2.y]);
+    const before = rel(map);
+    const moved = resolveSiblingOverlaps(moveSubtree(map, 'c1', map.nodes.c1.x, map.nodes.c2.y), 'c1');
+    expect(moved.nodes.c2.y).not.toBe(map.nodes.c2.y);
+    expect(rel(moved)).toEqual(before);
+    expect(moved.nodes.c2.x).toBe(map.nodes.c2.x);
+    expect(moved.nodes.g1.parentId).toBe('c2');
+    expect(moved.nodes.c1.parentId).toBe(map.rootId);
+  });
+
+  it('leaves unrelated nodes and the other side untouched', () => {
+    let map = twoKids();
+    map = addChild(map, map.rootId, 'l1', 'Kiri', 'left');
+    map = addChild(map, 'l1', 'lg', 'Cucu', 'left');
+    const moved = resolveSiblingOverlaps(moveSubtree(map, 'c2', map.nodes.c2.x, map.nodes.c1.y), 'c2');
+    expect(moved.nodes.l1).toBe(map.nodes.l1);
+    expect(moved.nodes.lg).toBe(map.nodes.lg);
+    expect(moved.nodes[map.rootId]).toBe(map.nodes[map.rootId]);
+  });
+
+  it('is idempotent', () => {
+    let map = twoKids();
+    map = addChild(map, 'c1', 'g1');
+    map = addChild(map, 'c1', 'g2');
+    const dragged = resolveSiblingOverlaps(moveSubtree(map, 'c2', map.nodes.c2.x, map.nodes.c1.y), 'c2');
+    expect(resolveSiblingOverlaps(dragged, 'c2')).toBe(dragged);
+    expect(resolveSiblingOverlaps(dragged, 'c1')).toBe(dragged);
+  });
+
+  it('uses manual node dimensions', () => {
+    let map = twoKids();
+    map = resizeNode(map, 'c1', { height: 200 });
+    const next = resolveSiblingOverlaps(map, 'c1');
+    expect(next.nodes.c2.y).toBe(map.nodes.c1.y + 200 + GAP_Y);
+  });
+
+  it('ignores blocks that do not share a horizontal span', () => {
+    let map = twoKids();
+    map = moveSubtree(map, 'c2', map.nodes.c1.x + 2000, map.nodes.c1.y);
+    expect(resolveSiblingOverlaps(map, 'c2')).toBe(map);
+  });
+
+  it('returns the same reference when nothing overlaps', () => {
+    const map = twoKids();
+    expect(resolveSiblingOverlaps(map, 'c1')).toBe(map);
+    expect(resolveSiblingOverlaps(map, map.rootId)).toBe(map);
+    expect(resolveSiblingOverlaps(map, 'missing')).toBe(map);
+  });
+
+  it('pushes aside an uncle block when a nested child grows its parent block', () => {
+    let map = twoKids();
+    map = addChild(map, 'c1', 'g1');
+    map = addSibling(map, 'g1', 'g2');
+    map = addSibling(map, 'g2', 'g3');
+    expect(map.nodes.c2.y).toBeGreaterThanOrEqual(bottom(map, 'g3') + GAP_Y);
+  });
+});

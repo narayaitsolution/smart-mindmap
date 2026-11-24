@@ -30,6 +30,8 @@ export interface Selection {
 export interface CanvasActions {
   select(sel: Selection | null): void;
   move(mapId: string, nodeId: string, x: number, y: number): void;
+  /** Called once when a node drag ends, to separate overlapping sibling blocks. */
+  settle(mapId: string, nodeId: string): void;
   resize(mapId: string, nodeId: string, size: NodeSizePatch | null): void;
   setViewport(vp: Viewport): void;
   addChild(mapId: string, nodeId: string, side?: Side): void;
@@ -468,7 +470,10 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
       drag.current = { kind: 'pan', id: d.ids[rest], touch: true, startX: d.now[rest].x, startY: d.now[rest].y, originX: vp.x, originY: vp.y, last: d.now[rest] };
       return;
     }
-    if (e.pointerId === d.id) drag.current = null;
+    if (e.pointerId === d.id) {
+      drag.current = null;
+      if (d.kind === 'node' && (e.clientX !== d.startX || e.clientY !== d.startY)) actions.settle(d.mapId, d.nodeId);
+    }
   };
 
   const onCanvasDown = (e: React.PointerEvent<SVGSVGElement>) => {

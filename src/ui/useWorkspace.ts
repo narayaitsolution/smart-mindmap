@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
-import { addChild, addSibling, createMindmap, deleteNode, deleteNodeKeepChildren, layoutTree, moveSubtree, newId, resizeNode, toggleCollapse, updateNode, type NodePatch, type NodeSizePatch, type Side } from '../model/mindmap';
+import { addChild, addSibling, createMindmap, deleteNode, deleteNodeKeepChildren, layoutTree, moveSubtree, newId, resizeNode, resolveSiblingOverlaps, toggleCollapse, updateNode, type NodePatch, type NodeSizePatch, type Side } from '../model/mindmap';
 import { AUTOSAVE_MS, createSerialQueue } from '../io/autosave';
 import { mergeImported } from '../io/json';
 import { addMap, emptyWorkspace, exceedsImageBudget, importExceedsImageBudget, nextMapPosition, removeMap, replaceAllMaps, replaceMap, type Viewport, type Workspace } from '../model/workspace';
@@ -142,6 +142,7 @@ export function useWorkspace() {
     removeKeepChildren: (mapId: string, nodeId: string) => mutate(mapId, (m) => deleteNodeKeepChildren(m, nodeId)),
     toggle: (mapId: string, nodeId: string) => mutate(mapId, (m) => toggleCollapse(m, nodeId)),
     move: (mapId: string, nodeId: string, x: number, y: number) => mutate(mapId, (m) => moveSubtree(m, nodeId, x, y)),
+    settle: (mapId: string, nodeId: string) => mutate(mapId, (m) => resolveSiblingOverlaps(m, nodeId)),
     resize: (mapId: string, nodeId: string, size: NodeSizePatch | null) => mutate(mapId, (m) => resizeNode(m, nodeId, size)),
     update: (mapId: string, nodeId: string, patch: NodePatch): boolean => {
       const map = ws.maps.find((m) => m.id === mapId);

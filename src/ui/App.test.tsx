@@ -211,6 +211,24 @@ describe('App', () => {
     expect(Number(root.querySelector('rect.node-box')!.getAttribute('height'))).toBe(40);
   });
 
+  it('separates overlapping siblings only when a node drag ends', async () => {
+    const root = await createMap();
+    fireEvent.keyDown(root, { key: 'Tab' });
+    const first = await screen.findByRole('button', { name: 'Node: Topic' });
+    fireEvent.keyDown(root, { key: 'Tab' });
+    const second = (await screen.findAllByRole('button', { name: 'Node: Topic' }))[1];
+    const y = (el: Element) => Number(/translate\([-\d.e]+[ ,]([-\d.e]+)\)/.exec(el.getAttribute('transform') ?? '')?.[1]);
+    const firstY = y(first);
+    const secondY = y(second);
+    fireEvent.pointerDown(second, { pointerId: 1, button: 0, clientX: 300, clientY: 300 });
+    fireEvent.pointerMove(second, { pointerId: 1, clientX: 300, clientY: 300 - (secondY - firstY) });
+    expect(y(first)).toBe(firstY);
+    expect(y(second)).toBe(firstY);
+    fireEvent.pointerUp(second, { pointerId: 1, clientX: 300, clientY: 300 - (secondY - firstY) });
+    expect(y(second)).toBe(firstY);
+    expect(y(first)).toBeGreaterThan(firstY);
+  });
+
   describe('touch gestures', () => {
     const vpOf = () => {
       const m = /translate\(([-\d.e]+) ([-\d.e]+)\) scale\(([-\d.e]+)\)/.exec(document.querySelector('svg.canvas > g')!.getAttribute('transform')!)!;

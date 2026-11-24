@@ -295,6 +295,7 @@ export function App() {
     () => ({
       select,
       move: store.move,
+      settle: store.settle,
       resize: store.resize,
       setViewport: (viewport: typeof ws.viewport) => dispatch({ type: 'viewport', viewport }),
       addChild,
@@ -307,7 +308,7 @@ export function App() {
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [select, store.move, store.resize, store.toggle, dispatch, ws.maps, t],
+    [select, store.move, store.settle, store.resize, store.toggle, dispatch, ws.maps, t],
   );
 
   const exportItems: [Parameters<typeof exportAs>[0], MessageKey][] = [

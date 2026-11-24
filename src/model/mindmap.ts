@@ -217,7 +217,7 @@ export function childrenOnSide(map: Mindmap, id: string, side: Side): MindNode[]
   return childrenOf(map, id).filter((c) => sideOf(map, c) === side);
 }
 
-export function addChild(map: Mindmap, parentId: string, id: string, text = 'Topic', side: Side = 'right'): Mindmap {
+function addChildRaw(map: Mindmap, parentId: string, id: string, text = 'Topic', side: Side = 'right'): Mindmap {
   const parent = map.nodes[parentId];
   if (!parent) return map;
   const siblings = childrenOnSide(map, parentId, side);
@@ -230,7 +230,7 @@ export function addChild(map: Mindmap, parentId: string, id: string, text = 'Top
   return touch(map, nodes);
 }
 
-export function addSibling(map: Mindmap, siblingId: string, id: string, text = 'Topic'): Mindmap {
+function addSiblingRaw(map: Mindmap, siblingId: string, id: string, text = 'Topic'): Mindmap {
   const ref = map.nodes[siblingId];
   if (!ref || ref.parentId === null) return map;
   const created: MindNode = {
@@ -250,6 +250,92 @@ export function addSibling(map: Mindmap, siblingId: string, id: string, text = '
     if (i === lastIndex) nodes[id] = created;
   });
   return touch(map, nodes);
+}
+
+export function addChild(map: Mindmap, parentId: string, id: string, text = 'Topic', side: Side = 'right'): Mindmap {
+  return resolveSiblingOverlaps(addChildRaw(map, parentId, id, text, side), id);
+}
+
+export function addSibling(map: Mindmap, siblingId: string, id: string, text = 'Topic'): Mindmap {
+  return resolveSiblingOverlaps(addSiblingRaw(map, siblingId, id, text), id);
+}
+
+interface Rect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+const rectsOverlap = (a: Rect, b: Rect): boolean => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+
+/**
+ * Keeps sibling blocks (a node plus its visible subtree) on one side of a parent from overlapping.
+ * `id` is the node that just changed, by creation or by a finished drag. Its block stays where it
+ * is; any sibling block it overlaps is shifted vertically, as a rigid subtree, just far enough to
+ * leave GAP_Y. The same is repeated for each ancestor, since their blocks may have grown. Blocks
+ * that do not overlap are never moved, so manual layout survives. Returns `map` when nothing moves.
+ */
+export function resolveSiblingOverlaps(map: Mindmap, id: string): Mindmap {
+  if (!map.nodes[id]) return map;
+  const kids = new Map<string, string[]>();
+  for (const n of Object.values(map.nodes)) {
+    if (n.parentId !== null) kids.set(n.parentId, [...(kids.get(n.parentId) ?? []), n.id]);
+  }
+  const nodes: Record<string, MindNode> = { ...map.nodes };
+  const visibleBlock = (root: string): string[] => {
+    const out: string[] = [];
+    const stack = [root];
+    while (stack.length) {
+      const cur = stack.pop() as string;
+      out.push(cur);
+      if (!nodes[cur].collapsed) stack.push(...(kids.get(cur) ?? []));
+    }
+    return out;
+  };
+  const rectOf = (root: string): Rect => {
+    const r: Rect = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
+    for (const nid of visibleBlock(root)) {
+      const n = nodes[nid];
+      const size = nodeSize(n);
+      r.left = Math.min(r.left, n.x);
+      r.top = Math.min(r.top, n.y);
+      r.right = Math.max(r.right, n.x + size.width);
+      r.bottom = Math.max(r.bottom, n.y + size.height);
+    }
+    return r;
+  };
+  const shift = (root: string, dy: number) => {
+    for (const nid of [root, ...descendantIds({ ...map, nodes }, root)]) nodes[nid] = { ...nodes[nid], y: nodes[nid].y + dy };
+  };
+
+  let changed = false;
+  for (let cur = id; nodes[cur].parentId !== null; cur = nodes[cur].parentId as string) {
+    const parentId = nodes[cur].parentId as string;
+    const side = sideOf({ ...map, nodes }, nodes[cur]);
+    const others = (kids.get(parentId) ?? []).filter((k) => k !== cur && sideOf({ ...map, nodes }, nodes[k]) === side);
+    if (others.length === 0) continue;
+    const anchor = rectOf(cur);
+    const placed: Rect[] = [anchor];
+    const rects = new Map(others.map((k) => [k, rectOf(k)]));
+    const topOf = (k: string) => (rects.get(k) as Rect).top;
+    const below = others.filter((k) => topOf(k) >= anchor.top).sort((a, b) => topOf(a) - topOf(b));
+    const above = others.filter((k) => topOf(k) < anchor.top).sort((a, b) => (rects.get(b) as Rect).bottom - (rects.get(a) as Rect).bottom);
+    for (const [group, dir] of [[below, 1], [above, -1]] as const) {
+      for (const k of group) {
+        let r = rects.get(k) as Rect;
+        const hits = placed.filter((p) => rectsOverlap(p, r));
+        if (hits.length) {
+          const dy = dir === 1 ? Math.max(...hits.map((p) => p.bottom)) + GAP_Y - r.top : Math.min(...hits.map((p) => p.top)) - GAP_Y - r.bottom;
+          shift(k, dy);
+          r = { ...r, top: r.top + dy, bottom: r.bottom + dy };
+          changed = true;
+        }
+        placed.push(r);
+      }
+    }
+  }
+  return changed ? touch(map, nodes) : map;
 }
 
 export function moveSubtree(map: Mindmap, id: string, x: number, y: number): Mindmap {
