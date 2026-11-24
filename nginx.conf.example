@@ -1,0 +1,26 @@
+# Contoh server block untuk menyajikan hasil `npm run build` (folder dist/).
+# Salin ke /etc/nginx/sites-available/, sesuaikan server_name dan root, lalu `nginx -t` sebelum reload.
+# Kebijakan CSP harus sama dengan src/csp.ts (dijaga oleh src/csp.test.ts); frame-ancestors hanya bisa lewat header.
+server {
+    listen 80;
+    server_name mindmap.example.com;
+    root /var/www/smart-mindmap/dist;
+    index index.html;
+
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://www.googleapis.com https://accounts.google.com; frame-src https://accounts.google.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Aset ber-hash dari Vite. add_header di dalam location menimpa header server, jadi ulangi semuanya.
+    location /assets/ {
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://www.googleapis.com https://accounts.google.com; frame-src https://accounts.google.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+}
