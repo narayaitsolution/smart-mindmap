@@ -199,10 +199,10 @@ function MapLayer({ map, selected, editingId, t, onResizeDown, onResizeReset, on
               onKeyDown={(e) => onNodeKey(e, map, n)}
             >
               {!editing && <rect className="node-box" width={width} height={height} rx={6} fill={n.color ?? 'none'} />}
-              {/* Transparent nodes sit on the always-light canvas, so black text keeps contrast. */}
+              {/* Transparent nodes sit on the themed canvas: CSS swaps their ink (.node-label-auto); filled nodes keep computed contrast text. */}
               <rect width={width} height={height} fill="transparent" />
               {!editing && (
-                <text textAnchor="middle" dominantBaseline="central" fill={readableTextColor(n.color)}>
+                <text className={n.color ? undefined : 'node-label-auto'} textAnchor="middle" dominantBaseline="central" fill={readableTextColor(n.color)}>
                   {lines.map((line, i) => (
                     <tspan key={i} x={width / 2} y={height / 2 + (i - (lines.length - 1) / 2) * LINE_HEIGHT}>
                       {line}

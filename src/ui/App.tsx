@@ -11,6 +11,7 @@ import { applyTheme, loadPrefs, resolveTheme, savePrefs, type Prefs } from '../p
 import { Canvas, type Selection } from './Canvas';
 import { ConfirmDelete } from './ConfirmDelete';
 import { Dropdown } from './Dropdown';
+import { FullscreenToggle } from './FullscreenToggle';
 import { Inspector } from './Inspector';
 import { MapTitle } from './MapTitle';
 import { ThemeToggle } from './ThemeToggle';
@@ -315,6 +316,7 @@ export function App() {
             theme={resolveTheme(prefs.theme)}
             onToggle={(next) => setPrefs({ theme: next })}
           />
+          <FullscreenToggle t={t} onError={(text) => setNotice({ kind: 'error', text })} />
           <Dropdown label={t('io.exportMenu')} disabled={!activeMap}>
             {(close) =>
               exportItems.map(([kind, label]) => (

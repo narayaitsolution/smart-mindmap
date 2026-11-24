@@ -27,3 +27,15 @@ describe('i18n sidebar labels', () => {
     expect(translate('node.swatchFill', { color: translate('color.red') })).toBe('Fill: Red');
   });
 });
+
+describe('i18n fullscreen and presets', () => {
+  it('names the fullscreen states and drops the separate reset buttons', () => {
+    expect(messages['fullscreen.enter']).toBe('Enter fullscreen');
+    expect(messages['fullscreen.exit']).toBe('Exit fullscreen');
+    expect(messages['fullscreen.unsupported']).toBe('Fullscreen is not available in this browser');
+    expect(messages['fullscreen.failed']).toBe('The browser blocked fullscreen.');
+    expect(messages['color.transparent']).toBe('Transparent');
+    expect(Object.keys(messages)).not.toContain('node.transparent');
+    expect(Object.keys(messages)).not.toContain('node.black');
+  });
+});

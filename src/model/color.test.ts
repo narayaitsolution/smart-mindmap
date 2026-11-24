@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isHexColor, readableTextColor, SWATCHES } from './color';
+import { FILL_SWATCHES, isHexColor, LINE_SWATCHES, readableTextColor } from './color';
 
 describe('color', () => {
   it('accepts only hex colors', () => {
@@ -14,10 +14,25 @@ describe('color', () => {
     expect(readableTextColor(undefined)).toBe('#000000');
   });
 
-  it('offers unique, valid default swatches with stable ids', () => {
-    expect(SWATCHES.length).toBeGreaterThanOrEqual(8);
-    expect(new Set(SWATCHES.map((s) => s.id)).size).toBe(SWATCHES.length);
-    expect(new Set(SWATCHES.map((s) => s.hex)).size).toBe(SWATCHES.length);
-    for (const s of SWATCHES) expect(isHexColor(s.hex)).toBe(true);
+  it('offers one compact row of fill presets starting with transparent', () => {
+    expect(FILL_SWATCHES[0]).toEqual({ id: 'transparent', hex: undefined });
+    expect(FILL_SWATCHES.length).toBeGreaterThanOrEqual(6);
+    expect(FILL_SWATCHES.length).toBeLessThanOrEqual(8);
+  });
+
+  it('offers one compact row of line presets starting with black, the default line', () => {
+    expect(LINE_SWATCHES[0]).toEqual({ id: 'black', hex: undefined });
+    expect(LINE_SWATCHES.length).toBeGreaterThanOrEqual(6);
+    expect(LINE_SWATCHES.length).toBeLessThanOrEqual(8);
+  });
+
+  it('keeps every preset distinct across both rows, with valid hex values and stable ids', () => {
+    const all = [...FILL_SWATCHES, ...LINE_SWATCHES];
+    const colors = all.filter((s) => s.hex !== undefined);
+    for (const s of colors) expect(isHexColor(s.hex)).toBe(true);
+    expect(new Set(colors.map((s) => s.hex)).size).toBe(colors.length);
+    expect(new Set(FILL_SWATCHES.map((s) => s.id)).size).toBe(FILL_SWATCHES.length);
+    expect(new Set(LINE_SWATCHES.map((s) => s.id)).size).toBe(LINE_SWATCHES.length);
+    expect(FILL_SWATCHES.filter((s) => LINE_SWATCHES.some((l) => l.id === s.id)).map((s) => s.id)).toEqual([]);
   });
 });

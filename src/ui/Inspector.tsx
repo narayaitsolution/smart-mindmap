@@ -1,6 +1,6 @@
 import { DEFAULT_EDGE_WIDTH, MAX_EDGE_WIDTH, MAX_NODE_HEIGHT, MAX_NODE_WIDTH, MIN_NODE_WIDTH, NODE_HEIGHT, nodeSize, type MindNode, type NodePatch, type NodeSizePatch } from '../model/mindmap';
 import { useEffect, useState } from 'react';
-import { SWATCHES } from '../model/color';
+import { FILL_SWATCHES, LINE_SWATCHES, type Swatch } from '../model/color';
 import type { MessageKey } from '../i18n';
 import { NoteEditor } from './NoteEditor';
 
@@ -43,25 +43,38 @@ function TextField({ node, t, onPatch }: { node: MindNode; t: T; onPatch(patch: 
   );
 }
 
-function Swatches({ current, label, name, disabled, t, onPick }: { current: string | undefined; label: string; name: 'node.swatchFill' | 'node.swatchLine'; disabled?: boolean; t: T; onPick(hex: string): void }) {
+/** One row of preset swatches plus the custom picker. `current` undefined selects the default swatch. */
+function SwatchRow({ swatches, current, label, name, disabled, pickerId, pickerValue, t, onPick }: {
+  swatches: readonly Swatch[];
+  current: string | undefined;
+  label: string;
+  name: 'node.swatchFill' | 'node.swatchLine';
+  disabled?: boolean;
+  pickerId: string;
+  pickerValue: string;
+  t: T;
+  onPick(hex: string | undefined): void;
+}) {
   return (
     <div className="swatches" role="group" aria-label={label}>
-      {SWATCHES.map((s) => {
-        const color = t(`color.${s.id}`);
+      {swatches.map((s) => {
+        const color = t(`color.${s.id}` as MessageKey);
+        const pressed = s.hex === undefined ? current === undefined : current?.toLowerCase() === s.hex;
         return (
           <button
             key={s.id}
             type="button"
-            className="swatch"
-            style={{ background: s.hex }}
+            className={s.hex === undefined ? `swatch ${s.id}` : 'swatch'}
+            style={s.hex ? { background: s.hex } : undefined}
             disabled={disabled}
             aria-label={t(name, { color })}
             title={color}
-            aria-pressed={current?.toLowerCase() === s.hex}
+            aria-pressed={pressed}
             onClick={() => onPick(s.hex)}
           />
         );
       })}
+      <input id={pickerId} type="color" disabled={disabled} value={pickerValue} onChange={(e) => onPick(e.target.value)} />
     </div>
   );
 }
@@ -92,24 +105,12 @@ export function Inspector({ node, t, onClose, onAddSibling, onPatch, onResize }:
 
         <div className="field">
           <label htmlFor="node-fill">{t('node.fill')}</label>
-          <Swatches current={node.color} label={t('node.fillPresets')} name="node.swatchFill" t={t} onPick={(hex) => onPatch({ color: hex })} />
-          <div className="row">
-            <input id="node-fill" type="color" value={node.color ?? '#ffffff'} onChange={(e) => onPatch({ color: e.target.value })} />
-            <button type="button" onClick={() => onPatch({ color: undefined })} aria-pressed={node.color === undefined}>
-              {t('node.transparent')}
-            </button>
-          </div>
+          <SwatchRow swatches={FILL_SWATCHES} current={node.color} label={t('node.fillPresets')} name="node.swatchFill" pickerId="node-fill" pickerValue={node.color ?? '#ffffff'} t={t} onPick={(hex) => onPatch({ color: hex })} />
         </div>
 
         <div className="field">
           <label htmlFor="edge-color">{t('node.edgeColor')}</label>
-          <Swatches current={node.edgeColor ?? '#000000'} label={t('node.linePresets')} name="node.swatchLine" disabled={isRoot} t={t} onPick={(hex) => onPatch({ edgeColor: hex })} />
-          <div className="row">
-            <input id="edge-color" type="color" disabled={isRoot} value={node.edgeColor ?? '#000000'} onChange={(e) => onPatch({ edgeColor: e.target.value })} />
-            <button type="button" disabled={isRoot} onClick={() => onPatch({ edgeColor: undefined })} aria-pressed={node.edgeColor === undefined}>
-              {t('node.black')}
-            </button>
-          </div>
+          <SwatchRow swatches={LINE_SWATCHES} current={node.edgeColor} label={t('node.linePresets')} name="node.swatchLine" disabled={isRoot} pickerId="edge-color" pickerValue={node.edgeColor ?? '#000000'} t={t} onPick={(hex) => onPatch({ edgeColor: hex })} />
         </div>
 
         <div className="slider-field">

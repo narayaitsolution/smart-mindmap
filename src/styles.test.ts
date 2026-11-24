@@ -61,3 +61,96 @@ describe('chrome surfaces', () => {
     expect(css).not.toMatch(/\.map-title:hover[^{]*\{[^}]*background:\s*#0b1a33/);
   });
 });
+
+describe('workspace theming', () => {
+  const light = tokens(':root {');
+  const dark = tokens(":root[data-theme='dark']");
+  const system = tokens(':root:not([data-theme])');
+  const rule = (sel: string) => {
+    const start = css.indexOf(`\n${sel} {`);
+    expect(start, sel).toBeGreaterThan(-1);
+    return css.slice(start, css.indexOf('}', start));
+  };
+
+  it.each([
+    ['forced dark', dark],
+    ['system dark', system],
+  ])('%s recolors canvas paper, ink, default edges and canvas controls', (_n, t) => {
+    for (const key of ['--paper', '--canvas-ink', '--canvas-muted', '--edge-default', '--control-bg', '--control-ink', '--node-stroke']) {
+      expect(t[key], key).toBeDefined();
+      expect(t[key], key).not.toBe(light[key]);
+    }
+    const [r, g, b] = rgb(t['--paper']);
+    expect(b, 'paper stays blue, not black').toBeGreaterThan(r + 15);
+    expect(Math.max(r, g, b)).toBeGreaterThanOrEqual(0x1a);
+    expect(contrast(t['--canvas-ink'], t['--paper'])).toBeGreaterThanOrEqual(7);
+    expect(contrast(t['--canvas-muted'], t['--paper'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(t['--canvas-soft'], t['--paper'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(t['--edge-default'], t['--paper'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(t['--node-stroke'], t['--paper'])).toBeGreaterThanOrEqual(3);
+    expect(contrast(t['--canvas-accent'], t['--paper'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(t['--control-ink'], t['--control-bg'])).toBeGreaterThanOrEqual(7);
+  });
+
+  it('light theme keeps its paper canvas with readable ink', () => {
+    expect(contrast(light['--canvas-ink'], light['--paper'])).toBeGreaterThanOrEqual(7);
+    expect(contrast(light['--canvas-muted'], light['--paper'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(light['--edge-default'], light['--paper'])).toBeGreaterThanOrEqual(7);
+  });
+
+  it('stage, overlay, nodes, edges and controls read the themed tokens', () => {
+    expect(rule('.stage')).toContain('background: var(--paper)');
+    expect(rule('.overlay')).toContain('color: var(--canvas-ink)');
+    expect(rule('.node-edit')).toContain('background: var(--canvas-field)');
+    expect(css).toMatch(/\.edge\[data-default='true'\]\s*\{[^}]*stroke:\s*var\(--edge-default\)/);
+    expect(css).toMatch(/\.node text\.node-label-auto\s*\{[^}]*fill:\s*var\(--canvas-ink\)/);
+    expect(rule('.side-control circle')).toContain('fill: var(--control-bg)');
+  });
+
+  it('keeps the topbar matte dark blue in every theme', () => {
+    const bar = rule('.topbar');
+    for (const [prop, token] of [
+      ['--surface', '--chrome-bg'],
+      ['--field', '--chrome-field'],
+      ['--text', '--chrome-text'],
+      ['--border', '--chrome-border'],
+      ['--accent', '--chrome-accent'],
+    ]) {
+      expect(bar).toContain(`${prop}: var(${token})`);
+    }
+    expect(light['--chrome-bg']).toBeDefined();
+    expect(light['--chrome-text']).toBeDefined();
+    const [r, g, b] = rgb(light['--chrome-bg']);
+    expect(b).toBeGreaterThan(r + 15);
+    expect(b).toBeGreaterThan(g + 8);
+    expect(contrast(light['--chrome-text'], light['--chrome-bg'])).toBeGreaterThanOrEqual(7);
+    expect(contrast(light['--chrome-muted'], light['--chrome-bg'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(light['--chrome-accent'], light['--chrome-bg'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(light['--chrome-danger'], light['--chrome-bg'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(light['--chrome-border'], light['--chrome-bg'])).toBeGreaterThanOrEqual(3);
+    expect(contrast(light['--chrome-text'], light['--chrome-field'])).toBeGreaterThanOrEqual(7);
+  });
+});
+
+describe('compact sidebar', () => {
+  const rule = (sel: string) => {
+    const start = css.indexOf(`\n${sel} {`);
+    expect(start, sel).toBeGreaterThan(-1);
+    return css.slice(start, css.indexOf('}', start));
+  };
+
+  it('keeps each swatch row on one line', () => {
+    expect(rule('.swatches')).toContain('flex-wrap: nowrap');
+  });
+
+  it('lays out note actions in one row and makes Clear note a large full-width button', () => {
+    expect(rule('.note-actions')).toContain('flex-wrap: nowrap');
+    const clear = rule('button.note-clear');
+    expect(clear).toContain('width: 100%');
+    expect(clear).toMatch(/min-height:\s*(4\d|5\d)px/);
+  });
+
+  it('shows transparent as a distinct slashed swatch', () => {
+    expect(css).toMatch(/button\.swatch\.transparent\s*\{/);
+  });
+});

@@ -15,18 +15,31 @@ export function readableTextColor(bg: string | undefined): string {
   return lum > 0.179 ? '#000000' : '#ffffff';
 }
 
-/** Default palette offered as one-click swatches. `id` keys the translated color name. */
-export const SWATCHES = [
-  { id: 'black', hex: '#000000' },
+export interface Swatch {
+  /** Keys the translated color name (`color.<id>`). */
+  id: string;
+  /** `undefined` means "use the default": no fill, or the themed default line. */
+  hex: string | undefined;
+}
+
+/** One-row fill presets. Transparent first; pastels so dark text stays readable. */
+export const FILL_SWATCHES: readonly Swatch[] = [
+  { id: 'transparent', hex: undefined },
+  { id: 'lightRed', hex: '#fca5a5' },
+  { id: 'lightYellow', hex: '#fde68a' },
+  { id: 'lightGreen', hex: '#bbf7d0' },
+  { id: 'lightBlue', hex: '#bfdbfe' },
+  { id: 'lightPurple', hex: '#ddd6fe' },
+  { id: 'lightGray', hex: '#e5e7eb' },
+];
+
+/** One-row line presets. Black first: the default line, which follows the theme. */
+export const LINE_SWATCHES: readonly Swatch[] = [
+  { id: 'black', hex: undefined },
   { id: 'gray', hex: '#6b7280' },
   { id: 'red', hex: '#dc2626' },
   { id: 'orange', hex: '#f97316' },
-  { id: 'yellow', hex: '#facc15' },
   { id: 'green', hex: '#16a34a' },
-  { id: 'teal', hex: '#0d9488' },
   { id: 'blue', hex: '#2563eb' },
   { id: 'purple', hex: '#7c3aed' },
-  { id: 'pink', hex: '#ec4899' },
-] as const;
-
-export type SwatchId = (typeof SWATCHES)[number]['id'];
+];

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { exportJson } from '../io/json';
 import { addChild, createMindmap } from '../model/mindmap';
@@ -127,9 +127,9 @@ describe('App', () => {
     fireEvent.change(screen.getByLabelText('Line width'), { target: { value: '6' } });
     expect(edge().getAttribute('stroke-width')).toBe('6');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Black' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Line: Black' }));
     expect(edge().getAttribute('data-default')).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: 'Transparent' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fill: Transparent' }));
     expect((child.querySelector('rect.node-box') as SVGRectElement).getAttribute('fill')).toBe('none');
   });
 
@@ -507,13 +507,14 @@ describe('App', () => {
     const child = await screen.findByRole('button', { name: 'Node: Topic' });
     const fills = within(screen.getByRole('group', { name: 'Fill color presets' }));
     const lines = within(screen.getByRole('group', { name: 'Line color presets' }));
-    expect(fills.getAllByRole('button').length).toBeGreaterThanOrEqual(8);
+    expect(fills.getAllByRole('button').length).toBeGreaterThanOrEqual(6);
 
-    fireEvent.click(fills.getByRole('button', { name: 'Fill: Red' }));
-    expect((child.querySelector('rect.node-box') as SVGRectElement).getAttribute('fill')).toBe('#dc2626');
-    expect(fills.getByRole('button', { name: 'Fill: Red' }).getAttribute('aria-pressed')).toBe('true');
-    expect(fills.getByRole('button', { name: 'Fill: Blue' }).getAttribute('aria-pressed')).toBe('false');
-    expect((screen.getByLabelText('Fill color') as HTMLInputElement).value).toBe('#dc2626');
+    fireEvent.click(fills.getByRole('button', { name: 'Fill: Light red' }));
+    expect((child.querySelector('rect.node-box') as SVGRectElement).getAttribute('fill')).toBe('#fca5a5');
+    expect(fills.getByRole('button', { name: 'Fill: Light red' }).getAttribute('aria-pressed')).toBe('true');
+    expect(fills.getByRole('button', { name: 'Fill: Light blue' }).getAttribute('aria-pressed')).toBe('false');
+    expect(fills.getByRole('button', { name: 'Fill: Transparent' }).getAttribute('aria-pressed')).toBe('false');
+    expect((screen.getByLabelText('Fill color') as HTMLInputElement).value).toBe('#fca5a5');
 
     fireEvent.click(lines.getByRole('button', { name: 'Line: Blue' }));
     expect((document.querySelector('path.edge') as SVGPathElement).getAttribute('stroke')).toBe('#2563eb');
@@ -521,7 +522,42 @@ describe('App', () => {
 
     fireEvent.change(screen.getByLabelText('Fill color'), { target: { value: '#123456' } });
     expect((child.querySelector('rect.node-box') as SVGRectElement).getAttribute('fill')).toBe('#123456');
-    expect(fills.getByRole('button', { name: 'Fill: Red' }).getAttribute('aria-pressed')).toBe('false');
+    expect(fills.getByRole('button', { name: 'Fill: Light red' }).getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('shows fill and line presets as one row each, transparent and black first, with no separate reset buttons', async () => {
+    const root = await createMap();
+    fireEvent.keyDown(root, { key: 'Tab' });
+    await screen.findByRole('button', { name: 'Node: Topic' });
+    const inspector = within(screen.getByRole('complementary', { name: 'Selected node' }));
+    expect(inspector.queryByRole('button', { name: 'Transparent' })).toBeNull();
+    expect(inspector.queryByRole('button', { name: 'Black' })).toBeNull();
+    const fills = inspector.getByRole('group', { name: 'Fill color presets' });
+    const lines = inspector.getByRole('group', { name: 'Line color presets' });
+    const names = (g: HTMLElement) => within(g).getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+    expect(names(fills)[0]).toBe('Fill: Transparent');
+    expect(names(lines)[0]).toBe('Line: Black');
+    expect(fills.parentElement!.querySelectorAll('input[type="color"]')).toHaveLength(1);
+    expect(lines.parentElement!.querySelectorAll('input[type="color"]')).toHaveLength(1);
+    expect(fills.contains(fills.parentElement!.querySelector('input[type="color"]'))).toBe(true);
+    expect(lines.contains(lines.parentElement!.querySelector('input[type="color"]'))).toBe(true);
+    const hex = (g: HTMLElement) => within(g).getAllByRole('button').map((b) => (b as HTMLElement).style.background).filter(Boolean);
+    const all = [...hex(fills), ...hex(lines)];
+    expect(new Set(all).size).toBe(all.length);
+    expect(lines.querySelector('button[aria-pressed="true"]')!.getAttribute('aria-label')).toBe('Line: Black');
+    expect(fills.querySelector('button[aria-pressed="true"]')!.getAttribute('aria-label')).toBe('Fill: Transparent');
+  });
+
+  it('keeps Clear note as a full-width action after the other note controls', async () => {
+    const root = await createMap();
+    fireEvent.click(root);
+    const clear = screen.getByRole('button', { name: 'Clear note' });
+    expect(clear.classList.contains('note-clear')).toBe(true);
+    const field = clear.closest('.note-field')!;
+    expect(field.lastElementChild).toBe(clear);
+    const insert = screen.getByRole('button', { name: 'Insert link' });
+    expect(insert.parentElement).toBe(screen.getByRole('button', { name: 'Insert image from URL' }).parentElement);
+    expect(insert.parentElement!.classList.contains('note-actions')).toBe(true);
   });
 
   it('disables line swatches for the root, which has no incoming line', async () => {
@@ -546,7 +582,7 @@ describe('App', () => {
     expect((screen.getByLabelText('Node text') as HTMLTextAreaElement).value).toBe('Core idea');
     expect(screen.getByLabelText('Line width')).toBeTruthy();
     expect(screen.getByRole('group', { name: 'Fill color presets' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Fill: Red' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Fill: Light red' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Line: Blue' })).toBeTruthy();
   });
 
@@ -628,6 +664,68 @@ describe('App', () => {
     fireEvent.click(toggle);
     expect(document.documentElement.dataset.theme).toBe('light');
     expect(JSON.parse(localStorage.getItem('smart-mindmap:prefs') ?? '{}').theme).toBe('light');
+  });
+
+  describe('fullscreen toggle', () => {
+    let current: Element | null = null;
+    const stubFullscreen = (request: () => Promise<void>, exit: () => Promise<void>) => {
+      Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true });
+      Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => current });
+      document.documentElement.requestFullscreen = vi.fn(request);
+      document.exitFullscreen = vi.fn(exit);
+    };
+    const flip = (el: Element | null) => {
+      current = el;
+      document.dispatchEvent(new Event('fullscreenchange'));
+    };
+    afterEach(() => {
+      current = null;
+      for (const k of ['fullscreenEnabled', 'fullscreenElement']) Reflect.deleteProperty(document, k);
+      Reflect.deleteProperty(document.documentElement, 'requestFullscreen');
+      Reflect.deleteProperty(document, 'exitFullscreen');
+    });
+
+    it('sits next to the theme toggle and enters then exits fullscreen, following fullscreenchange', async () => {
+      stubFullscreen(async () => flip(document.documentElement), async () => flip(null));
+      await ready();
+      const header = within(screen.getByRole('banner'));
+      const enter = header.getByRole('button', { name: 'Enter fullscreen' });
+      expect(enter.textContent).toBe('');
+      expect(enter.querySelector('svg.icon-expand')).toBeTruthy();
+      expect(enter.previousElementSibling).toBe(header.getByRole('button', { name: 'Dark theme' }));
+      fireEvent.click(enter);
+      expect(document.documentElement.requestFullscreen).toHaveBeenCalledTimes(1);
+      const exit = await header.findByRole('button', { name: 'Exit fullscreen' });
+      expect(exit.querySelector('svg.icon-collapse')).toBeTruthy();
+      fireEvent.click(exit);
+      expect(document.exitFullscreen).toHaveBeenCalledTimes(1);
+      await header.findByRole('button', { name: 'Enter fullscreen' });
+    });
+
+    it('syncs the button when the browser leaves fullscreen on its own (Esc)', async () => {
+      stubFullscreen(async () => undefined, async () => undefined);
+      current = document.documentElement;
+      await ready();
+      expect(screen.getByRole('button', { name: 'Exit fullscreen' })).toBeTruthy();
+      act(() => flip(null));
+      expect(screen.getByRole('button', { name: 'Enter fullscreen' })).toBeTruthy();
+    });
+
+    it('reports a rejected request without crashing and stays in the enter state', async () => {
+      stubFullscreen(() => Promise.reject(new Error('denied')), async () => undefined);
+      await ready();
+      fireEvent.click(screen.getByRole('button', { name: 'Enter fullscreen' }));
+      expect((await screen.findByRole('alert')).textContent).toContain('The browser blocked fullscreen.');
+      expect(screen.getByRole('button', { name: 'Enter fullscreen' })).toBeTruthy();
+    });
+
+    it('disables the button with an explanation when the API is unsupported', async () => {
+      await ready();
+      const button = screen.getByRole('button', { name: 'Fullscreen is not available in this browser' }) as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+      fireEvent.click(button);
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
   });
 
   it('starts from the system color scheme and leaves the theme attribute unset until toggled', async () => {

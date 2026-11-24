@@ -166,7 +166,7 @@ export function NoteEditor({ note, t, onChange }: Props) {
       />
       <label htmlFor="note-url">{t('note.url')}</label>
       <input id="note-url" type="text" inputMode="url" maxLength={2048} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" />
-      <div className="row">
+      <div className="row note-actions">
         <button type="button" onClick={addLink}>
           {t('note.insertLink')}
         </button>
@@ -190,21 +190,6 @@ export function NoteEditor({ note, t, onChange }: Props) {
           {error}
         </p>
       )}
-      <div className="row">
-        <button
-          type="button"
-          className="danger"
-          disabled={!note}
-          onClick={() => {
-            if (ref.current) ref.current.innerHTML = '';
-            setError(null);
-            emitted.current = undefined;
-            onChange(undefined);
-          }}
-        >
-          {t('note.clear')}
-        </button>
-      </div>
       {preview && (
         <div className="note-preview">
           <span className="field-label">{t('note.preview')}</span>
@@ -212,6 +197,19 @@ export function NoteEditor({ note, t, onChange }: Props) {
           <div className="note-preview-body" dangerouslySetInnerHTML={{ __html: preview }} />
         </div>
       )}
+      <button
+        type="button"
+        className="danger note-clear"
+        disabled={!note}
+        onClick={() => {
+          if (ref.current) ref.current.innerHTML = '';
+          setError(null);
+          emitted.current = undefined;
+          onChange(undefined);
+        }}
+      >
+        {t('note.clear')}
+      </button>
     </div>
   );
 }
