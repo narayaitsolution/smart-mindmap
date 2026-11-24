@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import { addChild, addSibling, createMindmap, deleteNode, deleteNodeKeepChildren, layoutTree, moveSubtree, newId, resizeNode, toggleCollapse, updateNode, type NodePatch, type NodeSizePatch, type Side } from '../model/mindmap';
+import { AUTOSAVE_MS, createSerialQueue } from '../io/autosave';
 import { mergeImported } from '../io/json';
 import { addMap, emptyWorkspace, exceedsImageBudget, importExceedsImageBudget, nextMapPosition, removeMap, replaceAllMaps, replaceMap, type Viewport, type Workspace } from '../model/workspace';
 import { loadWorkspace, saveWorkspace } from '../storage/persistence';
@@ -53,13 +54,24 @@ export function useWorkspace() {
   const [state, setState] = useState<LoadState>('loading');
   const [saveFailed, setSaveFailed] = useState(false);
   const loaded = useRef(false);
+  const latest = useRef(ws);
+  const saved = useRef(ws);
+  const queue = useRef<ReturnType<typeof createSerialQueue> | null>(null);
+  queue.current ??= createSerialQueue();
+
+  useLayoutEffect(() => {
+    latest.current = ws;
+  }, [ws]);
 
   useEffect(() => {
     let alive = true;
     loadWorkspace()
       .then((stored) => {
         if (!alive) return;
-        if (stored) dispatch({ type: 'load', ws: stored });
+        if (stored) {
+          saved.current = stored;
+          dispatch({ type: 'load', ws: stored });
+        }
         loaded.current = true;
         setState('ready');
       })
@@ -73,16 +85,37 @@ export function useWorkspace() {
     };
   }, []);
 
+  /** Writes the newest workspace to IndexedDB. Serialized, so an older snapshot can never land after a newer one. Never rejects. */
+  const flush = useCallback(
+    () =>
+      (queue.current as ReturnType<typeof createSerialQueue>).run(async () => {
+        if (!loaded.current) return;
+        const snapshot = latest.current;
+        if (snapshot === saved.current) return;
+        try {
+          await saveWorkspace(snapshot);
+          saved.current = snapshot;
+          setSaveFailed(false);
+        } catch {
+          setSaveFailed(true);
+        }
+      }),
+    [],
+  );
+
   useEffect(() => {
     if (!loaded.current) return;
-    const timer = setTimeout(() => {
-      saveWorkspace(ws).then(
-        () => setSaveFailed(false),
-        () => setSaveFailed(true),
-      );
-    }, 250);
+    const timer = setTimeout(() => void flush(), 250);
     return () => clearTimeout(timer);
-  }, [ws]);
+  }, [ws, flush]);
+
+  useEffect(() => {
+    const id = setInterval(() => void flush(), AUTOSAVE_MS);
+    return () => clearInterval(id);
+  }, [flush]);
+
+  /** True while map content exists that browser storage has not confirmed. Viewport-only changes do not count. */
+  const unsaved = useCallback(() => loaded.current && latest.current.maps !== saved.current.maps, []);
 
   const mutate = useCallback((mapId: string, fn: (m: Mindmap) => Mindmap) => dispatch({ type: 'mutate', mapId, fn }), []);
 
@@ -90,6 +123,8 @@ export function useWorkspace() {
     ws,
     state,
     saveFailed,
+    flush,
+    unsaved,
     dispatch,
     create: (title: string, rootText: string) => dispatch({ type: 'create', title, rootText }),
     mutate,

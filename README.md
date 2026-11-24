@@ -12,10 +12,9 @@ Browser-based mindmap editor built with React, TypeScript and Vite. Maps are sto
 - **Canvas panning and zoom**: drag the background to pan, scroll to zoom, plus zoom in/out and fit-to-screen controls.
 - **Notes**: rich-text notes per node (bold, italic, lists, links, uploaded images) with size limits.
 - **Keyboard shortcuts**: `Tab`/`Insert` add child, `Delete` remove node, `Arrow Left/Right` collapse/expand.
-- **Open / Save**: `Open` picks a local `.mm` (FreeMind) or `.json` file. `Save` downloads the active map as a FreeMind-compatible `.mm` file that other mindmap apps can read.
+- **Open / Save / Save as**: `Open` picks a local `.mm` (FreeMind) or `.json` file. In browsers with the File System Access API (Chromium), `Save as` links the active map to a local `.mm` file and `Open` links an opened `.mm` file; the linked file is then rewritten every 15 s when it changed, with no further dialogs. `Save` and `Ctrl`/`Cmd`+`S` write the linked file, or open `Save as` when none is linked. Other browsers download a `.mm` file instead. Without a linked file the map stays in browser storage (IndexedDB), saved shortly after each edit and every 15 s. The browser warns before closing the tab only while changes are not yet stored.
 - **Import**: JSON or FreeMind (`.mm`), through `Open`.
 - **Export**: JSON, FreeMind (`.mm`), PNG, JPG, SVG and PDF.
-- **Login / Logout**: header button that toggles a local placeholder state only. There is no OAuth, account or network call yet.
 - Sun/moon icon theme toggle (follows the OS color scheme until first toggled; the choice is stored in the browser), English-only UI, multiple mindmaps.
 - The Google Drive backup code in `src/google/` and `src/ui/GoogleDriveMenu.tsx` is dormant: it is not shown in the UI.
 

@@ -29,23 +29,12 @@ const createMap = async () => {
 };
 
 describe('App', () => {
-  it('shows an empty state with Login instead of the Google Drive menu', async () => {
+  it('shows an empty state with no Login button and no Google Drive menu', async () => {
     await ready();
     const header = within(screen.getByRole('banner'));
     expect(header.queryByRole('button', { name: 'Google Drive' })).toBeNull();
-    expect(header.getByRole('button', { name: 'Login' })).toBeTruthy();
+    expect(header.queryByRole('button', { name: /^(Login|Logout)$/ })).toBeNull();
     expect(screen.getAllByRole('button', { name: 'New mindmap' }).length).toBeGreaterThan(0);
-  });
-
-  it('toggles a local placeholder login state without any network call', async () => {
-    const fetchSpy = vi.fn();
-    vi.stubGlobal('fetch', fetchSpy);
-    await ready();
-    fireEvent.click(screen.getByRole('button', { name: 'Login' }));
-    expect(screen.queryByRole('button', { name: 'Login' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
-    expect(screen.getByRole('button', { name: 'Login' })).toBeTruthy();
-    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('opens the local file picker from the Open button and accepts .mm and .json', async () => {

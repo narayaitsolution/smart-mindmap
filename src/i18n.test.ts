@@ -12,9 +12,10 @@ describe('i18n', () => {
     expect(translate('import.done', { count: 3 })).toBe('Imported 3 mindmap(s).');
   });
 
-  it('has the header labels for login, open, save and theme', () => {
-    expect(messages['auth.login']).toBe('Login');
-    expect(messages['auth.logout']).toBe('Logout');
+  it('has the header labels for open, save, save as and theme, and no login labels', () => {
+    expect(Object.keys(messages)).not.toContain('auth.login');
+    expect(Object.keys(messages)).not.toContain('auth.logout');
+    expect(messages['io.saveAs']).toBe('Save as');
     expect(messages['io.open']).toBe('Open');
     expect(messages['io.save']).toBe('Save');
     expect(messages['theme.dark']).toBe('Dark theme');

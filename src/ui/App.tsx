@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { translate, type MessageKey } from '../i18n';
 import { downloadBlob, safeFileName } from '../io/download';
 import { exportFreeMind, importFreeMind } from '../io/freemind';
 import { assertImportSize, exportJson, ImportError, importJson } from '../io/json';
+import { ensureWritable, pickOpenHandle, supportsOpenPicker, supportsSavePicker, type FileHandleLike } from '../io/mmFile';
 import { mapToJpg, mapToPdf, mapToPng, mapToSvg } from '../io/raster';
 import { descendantIds, mapBounds, visibleNodes, type Bounds, type Mindmap, type Side } from '../model/mindmap';
 import { fitViewport, zoomAt } from '../model/viewport';
@@ -15,6 +16,7 @@ import { FullscreenToggle } from './FullscreenToggle';
 import { Inspector } from './Inspector';
 import { MapTitle } from './MapTitle';
 import { ThemeToggle } from './ThemeToggle';
+import { useMmFile } from './useMmFile';
 import { useWorkspace } from './useWorkspace';
 
 type Notice = { kind: 'info' | 'error'; text: string } | null;
@@ -43,8 +45,8 @@ function unionBounds(maps: Mindmap[]): Bounds | null {
 export function App() {
   const store = useWorkspace();
   const { ws, dispatch } = store;
+  const mm = useMmFile(ws.maps);
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
-  const [loggedIn, setLoggedIn] = useState(false);
   const [selected, setSelected] = useState<Selection | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [editing, setEditing] = useState<Selection | null>(null);
@@ -177,8 +179,8 @@ export function App() {
     dispatch({ type: 'viewport', viewport: zoomAt(ws.viewport, { x: size.width / 2, y: size.height / 2 }, factor) });
   };
 
-  const onImport = async (files: FileList | null) => {
-    const file = files?.[0];
+  /** `handle` is set when the file came from the File System Access picker, so a .mm file can be saved back in place. */
+  const onImport = async (file: File | undefined, handle?: FileHandleLike) => {
     if (!file) return;
     try {
       const name = file.name.toLowerCase();
@@ -194,11 +196,85 @@ export function App() {
       pendingFit.current = 'active';
       dispatch({ type: 'merge', maps });
       setSelected(null);
-      setNotice({ kind: 'info', text: t('import.done', { count: maps.length }) });
+      if (handle && name.endsWith('.mm')) {
+        if (await ensureWritable(handle)) {
+          mm.attach(handle, maps[0]);
+          setNotice({ kind: 'info', text: t('import.done', { count: maps.length }) });
+        } else {
+          setNotice({ kind: 'info', text: t('io.openedNoAutosave', { file: handle.name }) });
+        }
+      } else {
+        setNotice({ kind: 'info', text: t('import.done', { count: maps.length }) });
+      }
     } catch (e) {
       setNotice({ kind: 'error', text: t('import.failed', { reason: reason(e) }) });
     }
   };
+
+  const openFile = async () => {
+    if (!supportsOpenPicker()) {
+      fileRef.current?.click();
+      return;
+    }
+    try {
+      const handle = await pickOpenHandle();
+      if (handle) await onImport(await handle.getFile(), handle);
+    } catch (e) {
+      setNotice({ kind: 'error', text: t('import.failed', { reason: reason(e) }) });
+    }
+  };
+
+  const noticeSaved = (file: string) => setNotice({ kind: 'info', text: t('io.saved', { file }) });
+
+  /** Browser storage always gets the newest data. The selected file is written when there is one. */
+  const saveNow = async () => {
+    await store.flush();
+    if (!activeMap) return;
+    if (mm.isBound()) {
+      if (await mm.save()) noticeSaved(mm.fileName() ?? '');
+    } else if (supportsSavePicker()) {
+      await saveAs();
+    } else {
+      await exportAs('mm');
+    }
+  };
+
+  const saveAs = async () => {
+    if (!activeMap) return;
+    try {
+      const file = await mm.saveAs(activeMap);
+      if (file) noticeSaved(file);
+    } catch (e) {
+      setNotice({ kind: 'error', text: t('io.exportFailed', { reason: reason(e) }) });
+    }
+  };
+
+  const unsaved = () => store.unsaved() || store.saveFailed || mm.unsaved();
+  const shortcut = useRef(saveNow);
+  const guard = useRef(unsaved);
+  useLayoutEffect(() => {
+    shortcut.current = saveNow;
+    guard.current = unsaved;
+  });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 's' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      void shortcut.current();
+    };
+    const onUnload = (e: BeforeUnloadEvent) => {
+      if (!guard.current()) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('beforeunload', onUnload);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('beforeunload', onUnload);
+    };
+  }, []);
 
   const exportAs = async (kind: 'json' | 'mm' | 'png' | 'jpg' | 'svg' | 'pdf') => {
     if (!activeMap) return;
@@ -254,12 +330,17 @@ export function App() {
           <button type="button" className="primary" onClick={createMap}>
             {t('maps.new')}
           </button>
-          <button type="button" onClick={() => fileRef.current?.click()}>
+          <button type="button" onClick={() => void openFile()}>
             {t('io.open')}
           </button>
-          <button type="button" disabled={!activeMap} onClick={() => void exportAs('mm')}>
+          <button type="button" disabled={!activeMap} onClick={() => void saveNow()}>
             {t('io.save')}
           </button>
+          {supportsSavePicker() && (
+            <button type="button" disabled={!activeMap} onClick={() => void saveAs()}>
+              {t('io.saveAs')}
+            </button>
+          )}
           <input
             ref={fileRef}
             type="file"
@@ -267,8 +348,8 @@ export function App() {
             hidden
             aria-label={t('io.importHint')}
             onChange={(e) => {
-              const files = e.target.files;
-              void onImport(files);
+              const file = e.target.files?.[0];
+              void onImport(file);
               e.target.value = '';
             }}
           />
@@ -334,16 +415,14 @@ export function App() {
               ))
             }
           </Dropdown>
-          <button type="button" onClick={() => setLoggedIn((v) => !v)}>
-            {loggedIn ? t('auth.logout') : t('auth.login')}
-          </button>
         </div>
       </header>
 
-      {(notice || store.saveFailed || store.state === 'error') && (
+      {(notice || mm.error || store.saveFailed || store.state === 'error') && (
         <div className="notices">
           {store.state === 'error' && <p role="alert" className="notice error">{t('maps.loadError')}</p>}
           {store.saveFailed && <p role="alert" className="notice error">{t('maps.saveError')}</p>}
+          {mm.error && <p role="alert" className="notice error">{t('io.fileSaveFailed', { file: mm.error.file, reason: mm.error.reason })}</p>}
           {notice && (
             <p role={notice.kind === 'error' ? 'alert' : 'status'} className={`notice ${notice.kind}`}>
               <span>{notice.text}</span>
