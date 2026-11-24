@@ -1,19 +1,19 @@
 export type ThemePref = 'system' | 'light' | 'dark';
-export type Lang = 'en' | 'id';
 export interface Prefs {
   theme: ThemePref;
-  lang: Lang;
 }
 
 const KEY = 'smart-mindmap:prefs';
-const DEFAULTS: Prefs = { theme: 'system', lang: 'en' };
+const DEFAULTS: Prefs = { theme: 'system' };
 
+/** Reads stored prefs. A retired `lang` key (the UI is English-only) is dropped and the cleaned prefs are written back. */
 export function loadPrefs(): Prefs {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null');
     const theme: ThemePref = raw?.theme === 'light' || raw?.theme === 'dark' || raw?.theme === 'system' ? raw.theme : DEFAULTS.theme;
-    const lang: Lang = raw?.lang === 'id' || raw?.lang === 'en' ? raw.lang : DEFAULTS.lang;
-    return { theme, lang };
+    const prefs: Prefs = { theme };
+    if (raw && typeof raw === 'object' && 'lang' in raw) savePrefs(prefs);
+    return prefs;
   } catch {
     return { ...DEFAULTS };
   }
@@ -31,4 +31,10 @@ export function savePrefs(p: Prefs): void {
 export function applyTheme(theme: ThemePref): void {
   if (theme === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
+}
+
+/** The theme actually shown: the stored choice, or the OS color scheme when the choice is `system`. */
+export function resolveTheme(theme: ThemePref): 'light' | 'dark' {
+  if (theme !== 'system') return theme;
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }

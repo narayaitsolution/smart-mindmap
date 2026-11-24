@@ -10,7 +10,8 @@
     "test": "vitest run",
     "verify": "bash scripts/verify.sh",
     "hooks:install": "git config core.hooksPath .githooks",
-    "push:safe": "bash scripts/safe-push.sh"
+    "push:safe": "bash scripts/safe-push.sh",
+    "deploy:ui": "bash scripts/deploy-ui.sh --force"
   },
   "dependencies": {
     "react": "^19.3.1",

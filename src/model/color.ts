@@ -14,3 +14,19 @@ export function readableTextColor(bg: string | undefined): string {
   const lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
   return lum > 0.179 ? '#000000' : '#ffffff';
 }
+
+/** Default palette offered as one-click swatches. `id` keys the translated color name. */
+export const SWATCHES = [
+  { id: 'black', hex: '#000000' },
+  { id: 'gray', hex: '#6b7280' },
+  { id: 'red', hex: '#dc2626' },
+  { id: 'orange', hex: '#f97316' },
+  { id: 'yellow', hex: '#facc15' },
+  { id: 'green', hex: '#16a34a' },
+  { id: 'teal', hex: '#0d9488' },
+  { id: 'blue', hex: '#2563eb' },
+  { id: 'purple', hex: '#7c3aed' },
+  { id: 'pink', hex: '#ec4899' },
+] as const;
+
+export type SwatchId = (typeof SWATCHES)[number]['id'];

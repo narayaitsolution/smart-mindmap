@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { exportJson } from '../io/json';
 import { addChild, createMindmap } from '../model/mindmap';
 import { clearWorkspace, loadWorkspace } from '../storage/persistence';
@@ -9,6 +9,11 @@ beforeEach(async () => {
   localStorage.clear();
   delete document.documentElement.dataset.theme;
   await clearWorkspace();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const ready = async () => {
@@ -23,13 +28,63 @@ const createMap = async () => {
 };
 
 describe('App', () => {
-  it('shows an empty state and a non-blocking Google notice when no client id is set', async () => {
+  it('shows an empty state with Login instead of the Google Drive menu', async () => {
     await ready();
-    expect(screen.queryByText(/VITE_GOOGLE_CLIENT_ID/)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Google Drive' }));
-    expect(screen.getByText(/VITE_GOOGLE_CLIENT_ID/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Connect Google Drive' })).toBeNull();
+    const header = within(screen.getByRole('banner'));
+    expect(header.queryByRole('button', { name: 'Google Drive' })).toBeNull();
+    expect(header.getByRole('button', { name: 'Login' })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'New mindmap' }).length).toBeGreaterThan(0);
+  });
+
+  it('toggles a local placeholder login state without any network call', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }));
+    expect(screen.queryByRole('button', { name: 'Login' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
+    expect(screen.getByRole('button', { name: 'Login' })).toBeTruthy();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('opens the local file picker from the Open button and accepts .mm and .json', async () => {
+    await ready();
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const accept = input.accept.split(',');
+    expect(accept).toContain('.mm');
+    expect(accept).toContain('.json');
+    const pick = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    expect(pick).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Import' })).toBeNull();
+  });
+
+  it('disables Save without a mindmap and downloads the active map as a .mm file', async () => {
+    await ready();
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getAllByRole('button', { name: 'New mindmap' })[0]);
+    await screen.findByRole('button', { name: 'Node: Core idea' });
+    const blobs: Blob[] = [];
+    Object.assign(URL, {
+      createObjectURL: vi.fn((b: Blob) => {
+        blobs.push(b);
+        return 'blob:save';
+      }),
+      revokeObjectURL: vi.fn(),
+    });
+    const names: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      names.push(this.download);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(names).toEqual(['Mindmap-1.mm']));
+    const xml = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(blobs[0]);
+    });
+    expect(xml).toContain('<map version="1.0.1">');
+    expect(xml).toContain('TEXT="Core idea"');
   });
 
   it('creates a mindmap with a transparent root node', async () => {
@@ -66,9 +121,9 @@ describe('App', () => {
 
     fireEvent.change(screen.getByLabelText('Fill color'), { target: { value: '#ffcc00' } });
     expect((child.querySelector('rect.node-box') as SVGRectElement).getAttribute('fill')).toBe('#ffcc00');
-    fireEvent.change(screen.getByLabelText('Edge color'), { target: { value: '#ff0000' } });
+    fireEvent.change(screen.getByLabelText('Line color'), { target: { value: '#ff0000' } });
     expect(edge().getAttribute('stroke')).toBe('#ff0000');
-    fireEvent.change(screen.getByLabelText('Edge width'), { target: { value: '6' } });
+    fireEvent.change(screen.getByLabelText('Line width'), { target: { value: '6' } });
     expect(edge().getAttribute('stroke-width')).toBe('6');
 
     fireEvent.click(screen.getByRole('button', { name: 'Black' }));
@@ -241,6 +296,105 @@ describe('App', () => {
     expect(screen.queryByRole('complementary', { name: 'Selected node' })).toBeNull();
   });
 
+  it('shows the clicked node text in the sidebar and edits it there', async () => {
+    const root = await createMap();
+    fireEvent.click(root);
+    const panel = screen.getByRole('complementary', { name: 'Selected node' });
+    const field = within(panel).getByLabelText('Node text') as HTMLTextAreaElement;
+    expect(field.value).toBe('Core idea');
+    fireEvent.change(field, { target: { value: 'Belajar' } });
+    expect(screen.getByRole('button', { name: 'Node: Belajar' })).toBeTruthy();
+    expect((within(panel).getByLabelText('Node text') as HTMLTextAreaElement).value).toBe('Belajar');
+  });
+
+  it('follows the selection and ignores blank text in the sidebar', async () => {
+    const root = await createMap();
+    fireEvent.keyDown(root, { key: 'Tab' });
+    const child = await screen.findByRole('button', { name: 'Node: Topic' });
+    const text = () => screen.getByLabelText('Node text') as HTMLTextAreaElement;
+    expect(text().value).toBe('Topic');
+    fireEvent.click(root);
+    expect(text().value).toBe('Core idea');
+    fireEvent.change(text(), { target: { value: '   ' } });
+    expect(screen.getByRole('button', { name: 'Node: Core idea' })).toBeTruthy();
+    fireEvent.blur(text());
+    expect(text().value).toBe('Core idea');
+    fireEvent.click(child);
+    expect(text().value).toBe('Topic');
+  });
+
+  it('keeps the sidebar text in sync after an inline rename', async () => {
+    const root = await createMap();
+    fireEvent.doubleClick(root);
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'Inline' } });
+    fireEvent.keyDown(screen.getByLabelText('Text'), { key: 'Enter' });
+    expect((screen.getByLabelText('Node text') as HTMLTextAreaElement).value).toBe('Inline');
+  });
+
+  it('labels the width slider "Line width" and keeps each slider label, value and control on one row', async () => {
+    const root = await createMap();
+    fireEvent.keyDown(root, { key: 'Tab' });
+    await screen.findByRole('button', { name: 'Node: Topic' });
+    expect(screen.queryByLabelText('Edge width')).toBeNull();
+    for (const name of ['Line width', 'Width', 'Height']) {
+      const slider = screen.getByLabelText(name) as HTMLInputElement;
+      const row = slider.closest('.slider-field')!;
+      expect(row).toBeTruthy();
+      expect(row.querySelector('label')!.textContent).toBe(name);
+      expect(row.querySelector('output')!.textContent).toBe(slider.value);
+      expect(Array.from(row.children).map((c) => c.tagName)).toEqual(['LABEL', 'OUTPUT', 'INPUT']);
+    }
+  });
+
+  it('picks default fill and line colors from labelled swatches next to the custom picker', async () => {
+    const root = await createMap();
+    fireEvent.keyDown(root, { key: 'Tab' });
+    const child = await screen.findByRole('button', { name: 'Node: Topic' });
+    const fills = within(screen.getByRole('group', { name: 'Fill color presets' }));
+    const lines = within(screen.getByRole('group', { name: 'Line color presets' }));
+    expect(fills.getAllByRole('button').length).toBeGreaterThanOrEqual(8);
+
+    fireEvent.click(fills.getByRole('button', { name: 'Fill: Red' }));
+    expect((child.querySelector('rect.node-box') as SVGRectElement).getAttribute('fill')).toBe('#dc2626');
+    expect(fills.getByRole('button', { name: 'Fill: Red' }).getAttribute('aria-pressed')).toBe('true');
+    expect(fills.getByRole('button', { name: 'Fill: Blue' }).getAttribute('aria-pressed')).toBe('false');
+    expect((screen.getByLabelText('Fill color') as HTMLInputElement).value).toBe('#dc2626');
+
+    fireEvent.click(lines.getByRole('button', { name: 'Line: Blue' }));
+    expect((document.querySelector('path.edge') as SVGPathElement).getAttribute('stroke')).toBe('#2563eb');
+    expect(lines.getByRole('button', { name: 'Line: Blue' }).getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.change(screen.getByLabelText('Fill color'), { target: { value: '#123456' } });
+    expect((child.querySelector('rect.node-box') as SVGRectElement).getAttribute('fill')).toBe('#123456');
+    expect(fills.getByRole('button', { name: 'Fill: Red' }).getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('disables line swatches for the root, which has no incoming line', async () => {
+    const root = await createMap();
+    fireEvent.click(root);
+    const lines = within(screen.getByRole('group', { name: 'Line color presets' }));
+    for (const b of lines.getAllByRole('button')) expect((b as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('renders Add sibling as a filled action button', async () => {
+    const root = await createMap();
+    fireEvent.keyDown(root, { key: 'Tab' });
+    await screen.findByRole('button', { name: 'Node: Topic' });
+    const button = within(screen.getByRole('complementary', { name: 'Selected node' })).getByRole('button', { name: 'Add sibling' });
+    expect(button.classList.contains('primary')).toBe(true);
+    expect(button.classList.contains('action')).toBe(true);
+  });
+
+  it('labels the sidebar controls in English', async () => {
+    await createMap();
+    fireEvent.click(screen.getByRole('button', { name: 'Node: Core idea' }));
+    expect((screen.getByLabelText('Node text') as HTMLTextAreaElement).value).toBe('Core idea');
+    expect(screen.getByLabelText('Line width')).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Fill color presets' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Fill: Red' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Line: Blue' })).toBeTruthy();
+  });
+
   it('has no sidebar, no footer and an editable title above the map', async () => {
     await createMap();
     expect(document.querySelector('aside.side')).toBeNull();
@@ -293,20 +447,47 @@ describe('App', () => {
     expect(await screen.findByRole('button', { name: 'Node: Tersimpan' })).toBeTruthy();
   });
 
-  it('switches to Indonesian, persists it and sets the document language', async () => {
+  it('is English-only: no language selector, an old Indonesian preference is migrated away', async () => {
+    localStorage.setItem('smart-mindmap:prefs', JSON.stringify({ theme: 'dark', lang: 'id' }));
     await ready();
-    fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'id' } });
-    expect(await screen.findByText('Belum ada mindmap')).toBeTruthy();
-    expect(document.documentElement.lang).toBe('id');
-    expect(JSON.parse(localStorage.getItem('smart-mindmap:prefs') ?? '{}').lang).toBe('id');
+    expect(screen.queryByLabelText('Language')).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(document.documentElement.lang).toBe('en');
+    expect(JSON.parse(localStorage.getItem('smart-mindmap:prefs') ?? '{}')).toEqual({ theme: 'dark' });
+    expect(document.documentElement.dataset.theme).toBe('dark');
   });
 
-  it('defaults to the system theme and lets the user force one', async () => {
+  it('toggles the theme with a sun/moon icon button and persists it', async () => {
+    await ready();
+    expect(screen.queryByLabelText('Theme')).toBeNull();
+    const toggle = screen.getByRole('button', { name: 'Dark theme' });
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(toggle.querySelector('svg.icon-sun')).toBeTruthy();
+    expect(toggle.querySelector('svg.icon-moon')).toBeNull();
+    expect(toggle.textContent).toBe('');
+    fireEvent.click(toggle);
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(toggle.querySelector('svg.icon-moon')).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem('smart-mindmap:prefs') ?? '{}').theme).toBe('dark');
+    fireEvent.click(toggle);
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(JSON.parse(localStorage.getItem('smart-mindmap:prefs') ?? '{}').theme).toBe('light');
+  });
+
+  it('starts from the system color scheme and leaves the theme attribute unset until toggled', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('dark'),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
     await ready();
     expect(document.documentElement.dataset.theme).toBeUndefined();
-    expect((screen.getByLabelText('Theme') as HTMLSelectElement).value).toBe('system');
-    fireEvent.change(screen.getByLabelText('Theme'), { target: { value: 'dark' } });
-    expect(document.documentElement.dataset.theme).toBe('dark');
+    const toggle = screen.getByRole('button', { name: 'Dark theme' });
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(toggle);
+    expect(document.documentElement.dataset.theme).toBe('light');
   });
 
   it('imports a JSON file and shows it on the canvas', async () => {

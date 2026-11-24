@@ -7,13 +7,13 @@ import { mapToJpg, mapToPdf, mapToPng, mapToSvg } from '../io/raster';
 import { descendantIds, mapBounds, visibleNodes, type Bounds, type Mindmap, type Side } from '../model/mindmap';
 import { fitViewport, zoomAt } from '../model/viewport';
 import { importExceedsImageBudget } from '../model/workspace';
-import { applyTheme, loadPrefs, savePrefs, type Lang, type Prefs, type ThemePref } from '../prefs';
+import { applyTheme, loadPrefs, resolveTheme, savePrefs, type Prefs } from '../prefs';
 import { Canvas, type Selection } from './Canvas';
 import { ConfirmDelete } from './ConfirmDelete';
 import { Dropdown } from './Dropdown';
-import { GoogleDriveMenu } from './GoogleDriveMenu';
 import { Inspector } from './Inspector';
 import { MapTitle } from './MapTitle';
+import { ThemeToggle } from './ThemeToggle';
 import { useWorkspace } from './useWorkspace';
 
 type Notice = { kind: 'info' | 'error'; text: string } | null;
@@ -43,6 +43,7 @@ export function App() {
   const store = useWorkspace();
   const { ws, dispatch } = store;
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
+  const [loggedIn, setLoggedIn] = useState(false);
   const [selected, setSelected] = useState<Selection | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [editing, setEditing] = useState<Selection | null>(null);
@@ -52,11 +53,11 @@ export function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const pendingFit = useRef<'active' | 'all' | null>(null);
 
-  const t = useCallback((key: MessageKey, vars?: Record<string, string | number>) => translate(prefs.lang, key, vars), [prefs.lang]);
+  const t = useCallback((key: MessageKey, vars?: Record<string, string | number>) => translate(key, vars), []);
 
   useEffect(() => {
     applyTheme(prefs.theme);
-    document.documentElement.lang = prefs.lang;
+    document.documentElement.lang = 'en';
     savePrefs(prefs);
   }, [prefs]);
 
@@ -253,7 +254,10 @@ export function App() {
             {t('maps.new')}
           </button>
           <button type="button" onClick={() => fileRef.current?.click()}>
-            {t('io.import')}
+            {t('io.open')}
+          </button>
+          <button type="button" disabled={!activeMap} onClick={() => void exportAs('mm')}>
+            {t('io.save')}
           </button>
           <input
             ref={fileRef}
@@ -306,15 +310,11 @@ export function App() {
           <MapTitle mapId={activeMap.id} title={activeMap.title} t={t} onRename={(title) => dispatch({ type: 'rename', mapId: activeMap.id, title })} />
         )}
         <div className="row topbar-right">
-          <select aria-label={t('theme.label')} value={prefs.theme} onChange={(e) => setPrefs({ ...prefs, theme: e.target.value as ThemePref })}>
-            <option value="system">{t('theme.system')}</option>
-            <option value="light">{t('theme.light')}</option>
-            <option value="dark">{t('theme.dark')}</option>
-          </select>
-          <select aria-label={t('lang.label')} value={prefs.lang} onChange={(e) => setPrefs({ ...prefs, lang: e.target.value as Lang })}>
-            <option value="en">English</option>
-            <option value="id">Bahasa Indonesia</option>
-          </select>
+          <ThemeToggle
+            label={t('theme.dark')}
+            theme={resolveTheme(prefs.theme)}
+            onToggle={(next) => setPrefs({ theme: next })}
+          />
           <Dropdown label={t('io.exportMenu')} disabled={!activeMap}>
             {(close) =>
               exportItems.map(([kind, label]) => (
@@ -332,16 +332,9 @@ export function App() {
               ))
             }
           </Dropdown>
-          <GoogleDriveMenu
-            maps={ws.maps}
-            t={t}
-            onRestore={(maps) => {
-              pendingFit.current = 'all';
-              dispatch({ type: 'replaceAll', maps });
-              setSelected(null);
-            }}
-            onNotice={(kind, text) => setNotice({ kind, text })}
-          />
+          <button type="button" onClick={() => setLoggedIn((v) => !v)}>
+            {loggedIn ? t('auth.logout') : t('auth.login')}
+          </button>
         </div>
       </header>
 
