@@ -752,8 +752,7 @@ button.note-clear {
   color: var(--text);
   overflow-wrap: anywhere;
 }
-.note-editor img,
-.note-preview-body img {
+.note-editor img {
   max-width: 100%;
   height: auto;
 }
@@ -768,18 +767,6 @@ button.note-clear {
   color: var(--danger);
   font-weight: 700;
   margin: 4px 0;
-}
-.note-preview {
-  margin-top: 8px;
-}
-.note-preview-body {
-  padding: 8px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
-  overflow-wrap: anywhere;
-}
-.note-preview-body a {
-  color: var(--accent);
 }
 .note-indicator {
   pointer-events: none;

@@ -52,7 +52,6 @@ export const messages = {
   'note.insertImageUrl': 'Insert image from URL',
   'note.upload': 'Upload image',
   'note.clear': 'Clear note',
-  'note.preview': 'Preview',
   'note.badUrl': 'URL not allowed. Links: http, https or mailto. Images: local upload only; image URLs become links.',
   'note.badImageType': 'Image must be PNG, JPEG, WebP or GIF.',
   'note.imageTooLarge': 'Image is larger than 1 MB.',

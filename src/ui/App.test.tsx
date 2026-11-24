@@ -917,6 +917,10 @@ describe('App', () => {
       const root = await selectRoot();
       expect(root.querySelector('.note-indicator')).toBeNull();
       typeNote('<p>Halo <b>dunia</b></p>');
+      // Editing shows only the editor controls, never a separate preview block.
+      expect(document.querySelector('.note-preview')).toBeNull();
+      expect(document.querySelector('.note-preview-body')).toBeNull();
+      expect(screen.queryByText('Preview')).toBeNull();
       await waitFor(() => expect(screen.getByRole('button', { name: /^Node: Core idea\. Note: Halo dunia$/ }).querySelector('.note-indicator')).not.toBeNull());
       await waitFor(async () => {
         const ws = await loadWorkspace();

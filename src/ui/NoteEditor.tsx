@@ -131,8 +131,6 @@ export function NoteEditor({ note, t, onChange }: Props) {
     if (safe) insert(safe);
   };
 
-  const preview = note ? renderNote(note) : '';
-
   return (
     <div className="field note-field">
       <span id="note-label" className="field-label">
@@ -189,13 +187,6 @@ export function NoteEditor({ note, t, onChange }: Props) {
         <p role="alert" className="note-error">
           {error}
         </p>
-      )}
-      {preview && (
-        <div className="note-preview">
-          <span className="field-label">{t('note.preview')}</span>
-          {/* Output of renderNote: allowlisted tags only, safe URL schemes only. */}
-          <div className="note-preview-body" dangerouslySetInnerHTML={{ __html: preview }} />
-        </div>
       )}
       <button
         type="button"
