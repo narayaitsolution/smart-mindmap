@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { readableTextColor } from '../model/color';
 import {
   childrenOf,
@@ -17,6 +17,7 @@ import {
   type NodeSizePatch,
   type Side,
 } from '../model/mindmap';
+import { frameAt, MOTION_MS, planMotion, prefersReducedMotion, type MotionFrame, type MotionPlan } from '../model/motion';
 import { notePreview } from '../model/note';
 import { pinchViewport, zoomAt } from '../model/viewport';
 import type { Viewport } from '../model/workspace';
@@ -145,8 +146,92 @@ function sidesFor(map: Mindmap, node: MindNode): Side[] {
   return childrenOnSide(map, node.id, other).length > 0 ? ['left', 'right'] : [away];
 }
 
-function MapLayer({ map, selected, editingId, t, onResizeDown, onResizeReset, onNodeDown, onNodeClick, onNodeKey, onNodeEdit, onToggle, onAddChild, onEditCommit, onEditCancel }: {
+const NO_FRAME: MotionFrame = { nodes: {}, ghosts: [], opacity: {} };
+
+/**
+ * Short enter/leave animation. Only nodes that appear or disappear between two renders of a map
+ * are animated; the layout stays the source of truth and nothing here reaches the model or saves.
+ * With prefers-reduced-motion the change is applied at once.
+ */
+function useMapMotion(maps: Mindmap[]): Record<string, MotionFrame> {
+  const prev = useRef<Mindmap[]>(maps);
+  const run = useRef<{ plans: Record<string, MotionPlan>; start: number; raf: number } | null>(null);
+  const [anim, setAnim] = useState<{ plans: Record<string, MotionPlan>; t: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const before = prev.current;
+    prev.current = maps;
+    if (before === maps) return;
+    const plans: Record<string, MotionPlan> = {};
+    for (const m of maps) {
+      const plan = planMotion(before.find((b) => b.id === m.id), m);
+      if (plan) plans[m.id] = plan;
+    }
+    if (run.current) {
+      cancelAnimationFrame(run.current.raf);
+      run.current = null;
+    }
+    if (Object.keys(plans).length === 0 || prefersReducedMotion()) {
+      setAnim(null);
+      return;
+    }
+    const state = { plans, start: performance.now(), raf: 0 };
+    run.current = state;
+    const step = () => {
+      const t = (performance.now() - state.start) / MOTION_MS;
+      if (t >= 1) {
+        if (run.current === state) run.current = null;
+        setAnim(null);
+        return;
+      }
+      setAnim({ plans, t });
+      state.raf = requestAnimationFrame(step);
+    };
+    setAnim({ plans, t: 0 });
+    state.raf = requestAnimationFrame(step);
+  }, [maps]);
+
+  useEffect(
+    () => () => {
+      if (run.current) cancelAnimationFrame(run.current.raf);
+    },
+    [],
+  );
+
+  return useMemo(() => {
+    const out: Record<string, MotionFrame> = {};
+    if (!anim) return out;
+    for (const m of maps) {
+      const plan = anim.plans[m.id];
+      if (plan) out[m.id] = frameAt(m, plan, anim.t);
+    }
+    return out;
+  }, [anim, maps]);
+}
+
+/** A node that just left: drawn without controls or events while it contracts toward its parent. */
+function GhostNode({ node, opacity }: { node: MindNode; opacity: number }) {
+  const { width, height } = nodeSize(node);
+  const lines = nodeLines(node);
+  return (
+    <g className="node-wrap node-ghost" data-ghost-id={node.id} aria-hidden="true" pointerEvents="none" opacity={opacity}>
+      <g className="node" transform={`translate(${node.x} ${node.y})`}>
+        <rect className="node-box" width={width} height={height} rx={6} fill={node.color ?? 'none'} />
+        <text className={node.color ? undefined : 'node-label-auto'} textAnchor="middle" dominantBaseline="central" fill={readableTextColor(node.color)}>
+          {lines.map((line, i) => (
+            <tspan key={i} x={width / 2} y={height / 2 + (i - (lines.length - 1) / 2) * LINE_HEIGHT}>
+              {line}
+            </tspan>
+          ))}
+        </text>
+      </g>
+    </g>
+  );
+}
+
+function MapLayer({ map, frame, selected, editingId, t, onResizeDown, onResizeReset, onNodeDown, onNodeClick, onNodeKey, onNodeEdit, onToggle, onAddChild, onEditCommit, onEditCancel }: {
   map: Mindmap;
+  frame: MotionFrame;
   selected: string | null;
   editingId: string | null;
   t: T;
@@ -162,43 +247,56 @@ function MapLayer({ map, selected, editingId, t, onResizeDown, onResizeReset, on
   onEditCancel: () => void;
 }) {
   const nodes = useMemo(() => visibleNodes(map), [map]);
+  // Displayed position: entering nodes are mid-flight, every other node sits where the layout put it.
+  const shown = (n: MindNode): MindNode => (frame.nodes[n.id] ? { ...n, ...frame.nodes[n.id] } : n);
+  const ghostById = new Map(frame.ghosts.map((g) => [g.id, g]));
+  const edgeOf = (n: MindNode, parent: MindNode) => (
+    <path
+      key={`e-${n.id}`}
+      className="edge"
+      d={edgePath(parent, n)}
+      fill="none"
+      stroke={n.edgeColor ?? DEFAULT_EDGE_COLOR}
+      strokeWidth={n.edgeWidth ?? DEFAULT_EDGE_WIDTH}
+      strokeLinecap="round"
+      data-default={n.edgeColor ? undefined : 'true'}
+      opacity={frame.opacity[n.id]}
+    />
+  );
   return (
     <g>
       {nodes.map((n) => {
         if (n.parentId === null) return null;
-        return (
-          <path
-            key={`e-${n.id}`}
-            className="edge"
-            d={edgePath(map.nodes[n.parentId], n)}
-            fill="none"
-            stroke={n.edgeColor ?? DEFAULT_EDGE_COLOR}
-            strokeWidth={n.edgeWidth ?? DEFAULT_EDGE_WIDTH}
-            strokeLinecap="round"
-            data-default={n.edgeColor ? undefined : 'true'}
-          />
-        );
+        return edgeOf(shown(n), shown(map.nodes[n.parentId]));
       })}
-      {nodes.map((n) => {
+      {frame.ghosts.map((g) => {
+        const parent = g.parentId === null ? undefined : (ghostById.get(g.parentId) ?? map.nodes[g.parentId]);
+        return parent ? edgeOf(g, parent) : null;
+      })}
+      {frame.ghosts.map((g) => (
+        <GhostNode key={`g-${g.id}`} node={g} opacity={frame.opacity[g.id] ?? 1} />
+      ))}
+      {nodes.map((orig) => {
+        const n = shown(orig);
         const { width, height } = nodeSize(n);
         const hasKids = childrenOf(map, n.id).length > 0;
         const folded = Boolean(n.collapsed) && hasKids;
         const editing = editingId === n.id;
         const lines = nodeLines(n);
         return (
-          <g key={n.id} className="node-wrap" data-resized={n.width !== undefined || n.height !== undefined ? 'true' : undefined}>
+          <g key={n.id} className="node-wrap" opacity={frame.opacity[n.id]} data-resized={n.width !== undefined || n.height !== undefined ? 'true' : undefined}>
             <g
               className="node"
               data-node-id={n.id}
-              onClick={() => onNodeClick(map, n)}
-              onDoubleClick={() => onNodeEdit(map, n)}
+              onClick={() => onNodeClick(map, orig)}
+              onDoubleClick={() => onNodeEdit(map, orig)}
               role="button"
               tabIndex={0}
               aria-label={n.note ? t('node.labelNote', { text: n.text, preview: notePreview(n.note) }) : t('node.label', { text: n.text })}
               aria-pressed={selected === n.id}
               transform={`translate(${n.x} ${n.y})`}
-              onPointerDown={(e) => onNodeDown(e, map, n)}
-              onKeyDown={(e) => onNodeKey(e, map, n)}
+              onPointerDown={(e) => onNodeDown(e, map, orig)}
+              onKeyDown={(e) => onNodeKey(e, map, orig)}
             >
               {!editing && <rect className="node-box" width={width} height={height} rx={6} fill={n.color ?? 'none'} />}
               {/* Transparent nodes sit on the themed canvas: CSS swaps their ink (.node-label-auto); filled nodes keep computed contrast text. */}
@@ -238,10 +336,10 @@ function MapLayer({ map, selected, editingId, t, onResizeDown, onResizeReset, on
                     y1={y1}
                     x2={x2}
                     y2={y2}
-                    onPointerDown={(e) => onResizeDown(e, map, n, handle)}
+                    onPointerDown={(e) => onResizeDown(e, map, orig, handle)}
                     onDoubleClick={(e) => {
                       e.stopPropagation();
-                      onResizeReset(map, n);
+                      onResizeReset(map, orig);
                     }}
                   >
                     <title>{t('node.resize')}</title>
@@ -249,14 +347,14 @@ function MapLayer({ map, selected, editingId, t, onResizeDown, onResizeReset, on
                 ))}
               </g>
             )}
-            {editing && <NodeEditor node={n} side={sideOf(map, n)} label={t('node.text')} onCommit={onEditCommit} onCancel={onEditCancel} />}
-            {sidesFor(map, n).map((side) => {
+            {editing && <NodeEditor node={n} side={sideOf(map, orig)} label={t('node.text')} onCommit={onEditCommit} onCancel={onEditCancel} />}
+            {sidesFor(map, orig).map((side) => {
               const sideKids = childrenOnSide(map, n.id, side).length;
               const x = side === 'right' ? n.x + width + 16 : n.x - 16;
               const y = n.y + height / 2;
               const stop = (e: React.PointerEvent) => e.stopPropagation();
               if (sideKids === 0) {
-                const act = () => onAddChild(map, n, side);
+                const act = () => onAddChild(map, orig, side);
                 return (
                   <g
                     key={side}
@@ -293,12 +391,12 @@ function MapLayer({ map, selected, editingId, t, onResizeDown, onResizeReset, on
                   aria-expanded={!folded}
                   transform={`translate(${x} ${y})`}
                   onPointerDown={stop}
-                  onClick={() => onToggle(map, n)}
+                  onClick={() => onToggle(map, orig)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       e.stopPropagation();
-                      onToggle(map, n);
+                      onToggle(map, orig);
                     }
                   }}
                 >
@@ -327,6 +425,7 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
   vpRef.current = viewport;
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
+  const frames = useMapMotion(maps);
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -510,6 +609,7 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
           <MapLayer
             key={m.id}
             map={m}
+            frame={frames[m.id] ?? NO_FRAME}
             selected={selected?.mapId === m.id ? selected.nodeId : null}
             editingId={editing?.mapId === m.id ? editing.nodeId : null}
             t={t}

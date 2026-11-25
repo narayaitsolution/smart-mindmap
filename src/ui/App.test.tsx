@@ -9,6 +9,8 @@ import { App } from './App';
 beforeEach(async () => {
   localStorage.clear();
   delete document.documentElement.dataset.theme;
+  // These tests check final state; the enter/leave animation is covered in Canvas.motion.test.tsx.
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('reduce'), media: query, addEventListener: () => undefined, removeEventListener: () => undefined }));
   await clearWorkspace();
 });
 
