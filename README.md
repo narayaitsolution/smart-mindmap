@@ -9,6 +9,7 @@ Browser-based mindmap editor built with React, TypeScript and Vite. Maps are sto
 - **Multiline wrapping**: long node text wraps automatically and the node grows to fit.
 - **Edge resize**: drag a node edge to set width and height, or use `Alt` + arrow keys (`Shift` for larger steps). Double-click an edge or press `Alt+0` to reset to automatic size.
 - **Node moving**: drag a node to reposition it. Drop it onto another node to change its parent while keeping its descendants. "Tidy layout" re-arranges the map.
+- **Line re-parenting**: click and drag the dot at a child line's parent-side endpoint onto another node. The child subtree moves beside the new parent, and sibling spacing is resolved automatically. Invalid targets that would create a cycle are rejected.
 - **Canvas panning and zoom**: drag the background to pan, scroll to zoom, plus zoom in/out and fit-to-screen controls.
 - **Notes**: rich-text notes per node (bold, italic, lists, links, uploaded images) with size limits.
 - **Sticky notes**: add notes as movable cards anywhere on the canvas. Click a card to edit it in a modal. Content autosaves periodically and on Save or close. Delete asks for confirmation.
