@@ -20,10 +20,25 @@ import {
   toggleCollapse,
   updateNode,
   visibleNodes,
+  createStickyNote,
+  updateStickyNote,
+  deleteStickyNote,
 } from './mindmap';
 import { MAX_NOTE_BYTES } from './note';
 
 const base = () => createMindmap({ id: 'm1', title: 'Peta', rootText: 'Inti', at: { x: 100, y: 200 }, now: 1 });
+
+describe('sticky notes', () => {
+  it('creates, updates and deletes a sticky note without changing nodes', () => {
+    const map = createStickyNote(base(), 'note-1', 40, 60);
+    expect(map.stickyNotes?.['note-1']).toEqual({ id: 'note-1', x: 40, y: 60, text: '' });
+    const updated = updateStickyNote(map, 'note-1', 'Catatan rapat');
+    expect(updated.stickyNotes?.['note-1'].text).toBe('Catatan rapat');
+    const deleted = deleteStickyNote(updated, 'note-1');
+    expect(deleted.stickyNotes?.['note-1']).toBeUndefined();
+    expect(deleted.nodes).toEqual(map.nodes);
+  });
+});
 
 describe('createMindmap', () => {
   it('creates a root node at the requested position with transparent fill', () => {

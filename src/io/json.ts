@@ -1,6 +1,6 @@
 import { isHexColor } from '../model/color';
 import { clampNodeHeight, clampNodeWidth, MAX_EDGE_WIDTH, type MindNode, type Mindmap } from '../model/mindmap';
-import { sanitizeNote } from '../model/note';
+import { isSafeNoteUrl, sanitizeNote } from '../model/note';
 import { appendMap, clampZoom, emptyWorkspace, MAX_MAP_IMAGE_BYTES, mapImageBytes, type Workspace } from '../model/workspace';
 
 export class ImportError extends Error {
@@ -29,12 +29,12 @@ export function assertImportImages(map: Mindmap): Mindmap {
 export function scrubMap(map: Mindmap): Mindmap {
   let nodes: Record<string, MindNode> | null = null;
   for (const [id, n] of Object.entries(map.nodes)) {
-    if (n.note === undefined) continue;
     const note = sanitizeNote(n.note);
-    if (note === n.note) continue;
+    const url = typeof n.url === 'string' && isSafeNoteUrl(n.url, 'link') ? n.url.trim() : undefined;
+    if (note === n.note && url === n.url) continue;
     nodes ??= { ...map.nodes };
-    const { note: _old, ...rest } = n;
-    nodes[id] = note === undefined ? rest : { ...rest, note };
+    const { note: _old, url: _url, ...rest } = n;
+    nodes[id] = { ...rest, ...(note === undefined ? {} : { note }), ...(url === undefined ? {} : { url }) };
   }
   return nodes ? { ...map, nodes } : map;
 }
@@ -73,6 +73,7 @@ function sanitizeNode(id: string, raw: unknown): MindNode {
   if (typeof raw.height === 'number' && Number.isFinite(raw.height)) node.height = clampNodeHeight(raw.height);
   const note = sanitizeNote(raw.note);
   if (note !== undefined) node.note = note;
+  if (typeof raw.url === 'string' && isSafeNoteUrl(raw.url, 'link')) node.url = raw.url.trim();
   return node;
 }
 
@@ -93,11 +94,20 @@ export function sanitizeMap(raw: unknown): Mindmap {
   }
   // The root must be reachable: a cycle would never reach parentId === null, caught above.
   const now = Date.now();
+  const stickyNotes: NonNullable<Mindmap['stickyNotes']> = {};
+  if (isObj(raw.stickyNotes)) {
+    for (const [id, value] of Object.entries(raw.stickyNotes)) {
+      if (!isObj(value) || typeof value.text !== 'string' || typeof value.x !== 'number' || typeof value.y !== 'number') continue;
+      if (!Number.isFinite(value.x) || !Number.isFinite(value.y)) continue;
+      stickyNotes[id] = { id, x: value.x, y: value.y, text: value.text.slice(0, 10000) };
+    }
+  }
   return {
     id: str(raw.id, 'id'),
     title: str(raw.title, 'title').slice(0, 200),
     rootId,
     nodes,
+    ...(Object.keys(stickyNotes).length ? { stickyNotes } : {}),
     createdAt: typeof raw.createdAt === 'number' && Number.isFinite(raw.createdAt) ? raw.createdAt : now,
     updatedAt: typeof raw.updatedAt === 'number' && Number.isFinite(raw.updatedAt) ? raw.updatedAt : now,
   };

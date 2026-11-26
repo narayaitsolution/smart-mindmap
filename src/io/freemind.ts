@@ -1,6 +1,6 @@
 import { isHexColor } from '../model/color';
 import { childrenOf, createMindmap, layoutTree, MAX_EDGE_WIDTH, newId, type MindNode, type Mindmap } from '../model/mindmap';
-import { cleanNoteTree, noteToXhtml } from '../model/note';
+import { cleanNoteTree, isSafeNoteUrl, noteToXhtml } from '../model/note';
 import { assertImportImages, assertImportSize, ImportError } from './json';
 
 const esc = (s: string) =>
@@ -11,6 +11,7 @@ export function exportFreeMind(map: Mindmap): string {
   const walk = (node: MindNode, depth: number) => {
     const pad = '  '.repeat(depth);
     const attrs = [`ID="${esc(node.id)}"`, `TEXT="${esc(node.text)}"`];
+    if (node.url && isSafeNoteUrl(node.url, 'link')) attrs.push(`LINK="${esc(node.url.trim())}"`);
     if (node.color) attrs.push(`BACKGROUND_COLOR="${node.color}"`);
     if (node.collapsed) attrs.push('FOLDED="true"');
     const kids = childrenOf(map, node.id);
@@ -117,6 +118,8 @@ export function importFreeMind(xml: string): Mindmap {
   const read = (el: Element, id: string, parentId: string | null) => {
     if (++count > 20000) throw new ImportError('Too many nodes');
     const node: MindNode = { id, parentId, text: nodeText(el).slice(0, 2000), x: 0, y: 0 };
+    const url = el.getAttribute('LINK');
+    if (url && isSafeNoteUrl(url, 'link')) node.url = url.trim();
     const bg = el.getAttribute('BACKGROUND_COLOR');
     if (isHexColor(bg)) node.color = bg;
     if (el.getAttribute('FOLDED') === 'true') node.collapsed = true;

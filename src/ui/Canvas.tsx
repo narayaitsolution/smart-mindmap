@@ -14,6 +14,7 @@ import {
   visibleNodes,
   type MindNode,
   type Mindmap,
+  type StickyNote,
   type NodeSizePatch,
   type Side,
 } from '../model/mindmap';
@@ -40,6 +41,8 @@ export interface CanvasActions {
   remove(mapId: string, nodeId: string): void;
   toggle(mapId: string, nodeId: string): void;
   rename(sel: Selection): void;
+  moveStickyNote?(mapId: string, noteId: string, x: number, y: number): void;
+  openStickyNote?(mapId: string, noteId: string): void;
 }
 
 type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
@@ -54,6 +57,7 @@ interface Props {
   editing: Selection | null;
   onEditCommit(text: string): void;
   onEditCancel(): void;
+  onStickyNoteOpen?(mapId: string, noteId: string): void;
 }
 
 type Handle = 'e' | 'w' | 'n' | 's';
@@ -66,6 +70,7 @@ type Pt = { x: number; y: number };
 type Drag =
   | { kind: 'resize'; id: number; mapId: string; nodeId: string; handle: Handle; startX: number; startY: number; width: number; height: number }
   | { kind: 'node'; id: number; mapId: string; nodeId: string; startX: number; startY: number; originX: number; originY: number }
+  | { kind: 'sticky'; id: number; mapId: string; noteId: string; startX: number; startY: number; originX: number; originY: number }
   | { kind: 'pan'; id: number; touch: boolean; startX: number; startY: number; originX: number; originY: number; last: Pt }
   /** Two touch fingers: `from` are their positions when the pinch began, `origin` the viewport then. */
   | { kind: 'pinch'; ids: [number, number]; from: [Pt, Pt]; now: [Pt, Pt]; origin: Viewport };
@@ -229,7 +234,7 @@ function GhostNode({ node, opacity }: { node: MindNode; opacity: number }) {
   );
 }
 
-function MapLayer({ map, frame, selected, editingId, t, onResizeDown, onResizeReset, onNodeDown, onNodeClick, onNodeKey, onNodeEdit, onToggle, onAddChild, onEditCommit, onEditCancel }: {
+function MapLayer({ map, frame, selected, editingId, t, onResizeDown, onResizeReset, onNodeDown, onNodeClick, onNodeKey, onNodeEdit, onToggle, onAddChild, onEditCommit, onEditCancel, onStickyDown, onStickyOpen }: {
   map: Mindmap;
   frame: MotionFrame;
   selected: string | null;
@@ -245,6 +250,8 @@ function MapLayer({ map, frame, selected, editingId, t, onResizeDown, onResizeRe
   onAddChild: (map: Mindmap, node: MindNode, side: Side) => void;
   onEditCommit: (text: string) => void;
   onEditCancel: () => void;
+  onStickyDown: (e: React.PointerEvent<SVGGElement>, map: Mindmap, note: StickyNote) => void;
+  onStickyOpen: (map: Mindmap, note: StickyNote) => void;
 }) {
   const nodes = useMemo(() => visibleNodes(map), [map]);
   // Displayed position: entering nodes are mid-flight, every other node sits where the layout put it.
@@ -275,6 +282,13 @@ function MapLayer({ map, frame, selected, editingId, t, onResizeDown, onResizeRe
       })}
       {frame.ghosts.map((g) => (
         <GhostNode key={`g-${g.id}`} node={g} opacity={frame.opacity[g.id] ?? 1} />
+      ))}
+      {Object.values(map.stickyNotes ?? {}).map((note) => (
+        <g key={note.id} className="sticky-note" transform={`translate(${note.x} ${note.y})`} role="button" tabIndex={0} aria-label={t('sticky.item')} onPointerDown={(e) => onStickyDown(e, map, note)} onClick={() => onStickyOpen(map, note)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStickyOpen(map, note); } }}>
+          <rect width="180" height="140" rx="3" />
+          <path d="M 148 140 H 180 V 108" />
+          <text x="12" y="24">{note.text.split(/\\s+/).slice(0, 8).join(' ') || t('sticky.empty')}</text>
+        </g>
       ))}
       {nodes.map((orig) => {
         const n = shown(orig);
@@ -309,6 +323,12 @@ function MapLayer({ map, frame, selected, editingId, t, onResizeDown, onResizeRe
                     </tspan>
                   ))}
                 </text>
+              )}
+              {n.url && (
+                <g className="link-indicator" aria-hidden="true" transform={`translate(${n.note ? width - 28 : width - 8} 0)`}>
+                  <circle r={9} cx={0} cy={0} />
+                  <path d="M -1 -4 L 1 -6 A 3 3 0 0 1 5 -2 L 2 1 A 3 3 0 0 1 -2 1 M 1 4 L -1 6 A 3 3 0 0 1 -5 2 L -2 -1 A 3 3 0 0 1 2 -1" />
+                </g>
               )}
               {n.note && (
                 <g className="note-indicator" transform={`translate(${width - 8} 0)`}>
@@ -418,7 +438,7 @@ function MapLayer({ map, frame, selected, editingId, t, onResizeDown, onResizeRe
   );
 }
 
-export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCommit, onEditCancel }: Props) {
+export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCommit, onEditCancel, onStickyNoteOpen }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
   const vpRef = useRef(viewport);
@@ -439,6 +459,13 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
     svg.addEventListener('wheel', onWheel, { passive: false });
     return () => svg.removeEventListener('wheel', onWheel);
   }, []);
+
+  const onStickyDown = (e: React.PointerEvent<SVGGElement>, map: Mindmap, note: StickyNote) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    drag.current = { kind: 'sticky', id: e.pointerId, mapId: map.id, noteId: note.id, startX: e.clientX, startY: e.clientY, originX: note.x, originY: note.y };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
 
   const onNodeDown = (e: React.PointerEvent<SVGGElement>, map: Mindmap, node: MindNode) => {
     if (e.button !== 0) return;
@@ -550,6 +577,7 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
       } else patch.height = d.height + dy / viewport.zoom;
       actions.resize(d.mapId, d.nodeId, patch);
     } else if (d.kind === 'node') actions.move(d.mapId, d.nodeId, d.originX + dx / viewport.zoom, d.originY + dy / viewport.zoom);
+    else if (d.kind === 'sticky') actions.moveStickyNote?.(d.mapId, d.noteId, d.originX + dx / viewport.zoom, d.originY + dy / viewport.zoom);
     else {
       d.last = local(e);
       actions.setViewport({ ...viewport, x: d.originX + dx, y: d.originY + dy });
@@ -621,9 +649,11 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
             onNodeEdit={(m, n) => actions.rename({ mapId: m.id, nodeId: n.id })}
             onToggle={(m, n) => actions.toggle(m.id, n.id)}
             onAddChild={(m, n, side) => actions.addChild(m.id, n.id, side)}
-            onEditCommit={onEditCommit}
-            onEditCancel={onEditCancel}
-          />
+             onEditCommit={onEditCommit}
+             onEditCancel={onEditCancel}
+             onStickyDown={onStickyDown}
+             onStickyOpen={(m, n) => onStickyNoteOpen?.(m.id, n.id)}
+           />
         ))}
       </g>
     </svg>

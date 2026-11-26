@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { FILL_SWATCHES, LINE_SWATCHES, type Swatch } from '../model/color';
 import type { MessageKey } from '../i18n';
 import { NoteEditor } from './NoteEditor';
+import { isSafeNoteUrl } from '../model/note';
 
 interface Props {
   node: MindNode;
@@ -97,10 +98,17 @@ export function Inspector({ node, t, onClose, onAddSibling, onPatch, onResize }:
       <div className="inspector-body">
         <TextField node={node} t={t} onPatch={onPatch} />
 
-        <div className="field">
+        <div className="field row node-actions">
           <button type="button" className="primary action" disabled={isRoot} onClick={onAddSibling}>
             {t('node.addSibling')}
           </button>
+          {node.url && isSafeNoteUrl(node.url, 'link') && (
+            <button type="button" className="open-url" onClick={() => {
+              if (node.url && isSafeNoteUrl(node.url, 'link')) window.open(node.url.trim(), '_blank', 'noopener,noreferrer');
+            }}>
+              {t('node.openUrl')}
+            </button>
+          )}
         </div>
 
         <div className="field">
@@ -146,7 +154,7 @@ export function Inspector({ node, t, onClose, onAddSibling, onPatch, onResize }:
           </button>
         </div>
 
-        <NoteEditor key={node.id} note={node.note} t={t} onChange={(note) => onPatch({ note }) !== false} />
+        <NoteEditor key={node.id} note={node.note} nodeUrl={node.url} t={t} onChange={(note) => onPatch({ note }) !== false} onUrlChange={(url) => onPatch({ url })} />
       </div>
     </aside>
   );

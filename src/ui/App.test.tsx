@@ -31,6 +31,29 @@ const createMap = async () => {
 };
 
 describe('App', () => {
+  it('shows accessible icon controls and a numeric zoom percentage', async () => {
+    await ready();
+    for (const name of ['New mindmap', 'Open', 'Save', 'Mindmaps', 'Export', 'Fit to screen', 'Tidy layout']) {
+      const button = within(name === 'New mindmap' ? screen.getByRole('banner') : document.body).getByRole('button', { name });
+      expect(button.querySelector('svg[aria-hidden="true"]')).toBeTruthy();
+      expect(button.getAttribute('title')).toBe(name);
+    }
+    const zoom = screen.getByRole('group', { name: /Zoom/ });
+    expect(zoom.textContent).toContain('100%');
+    expect(zoom.textContent).not.toContain('Zoom');
+    for (const name of ['Zoom out', 'Zoom in']) {
+      expect(within(zoom).getByRole('button', { name }).querySelector('svg[aria-hidden="true"] circle')).toBeTruthy();
+    }
+  });
+
+  it('shows the tidy icon on Mindmaps and the mindmaps icon on Tidy layout', async () => {
+    await ready();
+    const mindmaps = screen.getByRole('button', { name: 'Mindmaps' });
+    const tidy = screen.getByRole('button', { name: 'Tidy layout' });
+    expect(mindmaps.querySelector('svg path')?.getAttribute('d')).toBe('M12 7v5M5 17v-5h14v5');
+    expect(tidy.querySelector('svg path')?.getAttribute('d')).toBe('M8 12h4m0-6v12m0-12h4m-4 12h4');
+  });
+
   it('shows an empty state with no Login button and no Google Drive menu', async () => {
     await ready();
     const header = within(screen.getByRole('banner'));
@@ -565,7 +588,7 @@ describe('App', () => {
     const field = clear.closest('.note-field')!;
     expect(field.lastElementChild).toBe(clear);
     const insert = screen.getByRole('button', { name: 'Insert link' });
-    expect(insert.parentElement).toBe(screen.getByRole('button', { name: 'Insert image from URL' }).parentElement);
+    expect(screen.queryByRole('button', { name: 'Insert image from URL' })).toBeNull();
     expect(insert.parentElement!.classList.contains('note-actions')).toBe(true);
   });
 
@@ -623,10 +646,10 @@ describe('App', () => {
 
   it('zooms with the toolbar buttons', async () => {
     await createMap();
-    const level = () => screen.getByText(/^Zoom \d+%$/).textContent;
-    expect(level()).toBe('Zoom 100%');
+    const level = () => screen.getByText(/^\d+%$/).textContent;
+    expect(level()).toBe('100%');
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
-    expect(level()).not.toBe('Zoom 100%');
+    expect(level()).not.toBe('100%');
     fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }));
     fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }));
     expect(Number(/(\d+)/.exec(level() ?? '')?.[1])).toBeLessThan(100);
@@ -859,12 +882,16 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: 'Node: Topic' })).toBeNull();
   });
 
-  it('keeps the Insert shortcut and deletes a leaf without asking', async () => {
+  it('keeps the Insert shortcut and confirms before deleting a leaf', async () => {
     const root = await createMap();
     fireEvent.keyDown(root, { key: 'Insert' });
     const child = await screen.findByRole('button', { name: 'Node: Topic' });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     fireEvent.keyDown(child, { key: 'Delete' });
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(confirm).toHaveBeenCalledWith('Delete this node?');
+    expect(screen.getByRole('button', { name: 'Node: Topic' })).toBeTruthy();
+    confirm.mockReturnValue(true);
+    fireEvent.keyDown(child, { key: 'Delete' });
     expect(screen.queryByRole('button', { name: 'Node: Topic' })).toBeNull();
   });
 
@@ -962,10 +989,27 @@ describe('App', () => {
       expect(editor().innerHTML).toBe('<p>ok</p>');
     });
 
-    it('inserts a link and an image URL, rejecting unsafe ones', async () => {
+    it('shows a decorative link indicator only while the node has a URL', async () => {
+      const root = await selectRoot();
+      expect(root.querySelector('.link-indicator')).toBeNull();
+      typeNote('<p>teks</p>');
+      const url = screen.getByLabelText('Node URL');
+      fireEvent.change(url, { target: { value: 'https://example.com/a' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Insert link' }));
+      const indicator = root.querySelector('.link-indicator');
+      expect(indicator).not.toBeNull();
+      expect(indicator?.getAttribute('aria-hidden')).toBe('true');
+      expect(root.querySelector('.note-indicator')).not.toBeNull();
+      expect(root.textContent).not.toContain('https://example.com/a');
+      fireEvent.change(url, { target: { value: '' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Insert link' }));
+      expect(root.querySelector('.link-indicator')).toBeNull();
+    });
+
+    it('assigns a node URL without changing the note and rejects unsafe URLs', async () => {
       await selectRoot();
       typeNote('<p>teks</p>');
-      const url = screen.getByLabelText('Link or image URL');
+      const url = screen.getByLabelText('Node URL');
       fireEvent.change(url, { target: { value: 'javascript:alert(1)' } });
       fireEvent.click(screen.getByRole('button', { name: 'Insert link' }));
       expect(screen.getByRole('alert').textContent).toMatch(/not allowed/i);
@@ -973,16 +1017,9 @@ describe('App', () => {
 
       fireEvent.change(url, { target: { value: 'https://example.com/a?b=1' } });
       fireEvent.click(screen.getByRole('button', { name: 'Insert link' }));
-      expect(editor().querySelector('a')?.getAttribute('href')).toBe('https://example.com/a?b=1');
-
-      fireEvent.change(url, { target: { value: 'http://example.com/p.png' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Insert image from URL' }));
-      expect(editor().querySelector('img')).toBeNull();
-      fireEvent.change(url, { target: { value: 'https://example.com/p.png' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Insert image from URL' }));
-      // Remote images are never loaded: the URL is kept as a plain link.
-      expect(editor().querySelector('img')).toBeNull();
-      expect(editor().querySelector('a[href="https://example.com/p.png"]')).not.toBeNull();
+      expect(editor().innerHTML).toBe('<p>teks</p>');
+      expect(screen.getByRole('button', { name: 'Open URL' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Insert image from URL' })).toBeNull();
     });
 
     it('uploads a small image as a data URL and refuses wrong types and big files', async () => {

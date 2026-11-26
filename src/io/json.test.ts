@@ -13,6 +13,20 @@ const sample = () => {
 };
 
 describe('json import/export', () => {
+  it('preserves safe node URLs and drops unsafe imported and stored URLs', () => {
+    const map = sample();
+    const safe = updateNode(map, 'c1', { url: 'https://example.com' });
+    expect(safe.nodes.c1.url).toBe('https://example.com');
+    expect(updateNode(safe, 'c1', { url: undefined }).nodes.c1.url).toBeUndefined();
+    expect(updateNode(safe, 'c1', { url: 'javascript:alert(1)' }).nodes.c1.url).toBe('https://example.com');
+    expect(importJson(exportJson([safe]))[0].nodes.c1.url).toBe('https://example.com');
+    const raw = JSON.parse(exportJson([safe]));
+    raw.maps[0].nodes.c1.url = 'javascript:alert(1)';
+    expect(importJson(JSON.stringify(raw))[0].nodes.c1.url).toBeUndefined();
+    expect(sanitizeWorkspace({ ...emptyWorkspace(), maps: raw.maps })?.maps[0].nodes.c1.url).toBeUndefined();
+    expect(exportJson(raw.maps)).not.toContain('javascript:');
+  });
+
   it('round-trips maps', () => {
     const map = sample();
     const result = importJson(exportJson([map]));

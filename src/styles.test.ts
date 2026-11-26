@@ -143,11 +143,11 @@ describe('compact sidebar', () => {
     expect(rule('.swatches')).toContain('flex-wrap: nowrap');
   });
 
-  it('lays out note actions in one row and makes Clear note a large full-width button', () => {
+  it('lays out note actions in one row and makes Clear note compact and full-width', () => {
     expect(rule('.note-actions')).toContain('flex-wrap: nowrap');
     const clear = rule('button.note-clear');
     expect(clear).toContain('width: 100%');
-    expect(clear).toMatch(/min-height:\s*(4\d|5\d)px/);
+    expect(clear).toContain('padding: 4px 6px');
   });
 
   it('shows transparent as a distinct slashed swatch', () => {

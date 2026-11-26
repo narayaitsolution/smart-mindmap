@@ -6,9 +6,11 @@ type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
 interface Props {
   note: string | undefined;
+  nodeUrl: string | undefined;
   t: T;
   /** Return false when the change was refused (image budget). */
   onChange(note: string | undefined): boolean | void;
+  onUrlChange(url: string | undefined): void;
 }
 
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
@@ -33,11 +35,13 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 /** Simple contenteditable note editor. Everything it emits has been through cleanNote. */
-export function NoteEditor({ note, t, onChange }: Props) {
+export function NoteEditor({ note, nodeUrl, t, onChange, onUrlChange }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const emitted = useRef<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
-  const [url, setUrl] = useState('');
+  const [url, setUrl] = useState(nodeUrl ?? '');
+
+  useEffect(() => setUrl(nodeUrl ?? ''), [nodeUrl]);
 
   // Reload the editor only for changes that did not come from typing in it.
   useEffect(() => {
@@ -96,18 +100,10 @@ export function NoteEditor({ note, t, onChange }: Props) {
 
   const addLink = () => {
     const href = url.trim();
-    if (!isSafeNoteUrl(href, 'link')) return setError(t('note.badUrl'));
-    const selected = window.getSelection()?.toString() ?? '';
-    insert(`<a href="${esc(href)}">${esc(selected && ref.current?.contains(window.getSelection()?.anchorNode ?? null) ? selected : href)}</a>`);
-    setUrl('');
-  };
-
-  const addImageUrl = () => {
-    const src = url.trim();
-    if (!isSafeNoteUrl(src, 'image')) return setError(t('note.badUrl'));
-    // Remote images are never loaded (tracking): insert a plain link, never an <img>.
-    insert(`<a href="${esc(src)}">${esc(src)}</a>`);
-    setUrl('');
+    if (href && !isSafeNoteUrl(href, 'link')) return setError(t('note.badUrl'));
+    onUrlChange(href || undefined);
+    setError(null);
+    setUrl(href);
   };
 
   const upload = async (file: File | undefined) => {
@@ -163,13 +159,10 @@ export function NoteEditor({ note, t, onChange }: Props) {
         }}
       />
       <label htmlFor="note-url">{t('note.url')}</label>
-      <input id="note-url" type="text" inputMode="url" maxLength={2048} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" />
       <div className="row note-actions">
+        <input id="note-url" type="text" inputMode="url" maxLength={2048} value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink(); } }} placeholder="https://" />
         <button type="button" onClick={addLink}>
           {t('note.insertLink')}
-        </button>
-        <button type="button" onClick={addImageUrl}>
-          {t('note.insertImageUrl')}
         </button>
       </div>
       <label htmlFor="note-upload">{t('note.upload')}</label>

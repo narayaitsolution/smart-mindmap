@@ -1,4 +1,4 @@
-import { cleanNote } from './note';
+import { cleanNote, isSafeNoteUrl } from './note';
 
 export interface MindNode {
   id: string;
@@ -19,6 +19,14 @@ export interface MindNode {
   height?: number;
   /** Sanitized HTML note (see model/note.ts). Undefined means no note. */
   note?: string;
+  url?: string;
+}
+
+export interface StickyNote {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
 }
 
 export interface Mindmap {
@@ -26,6 +34,7 @@ export interface Mindmap {
   title: string;
   rootId: string;
   nodes: Record<string, MindNode>;
+  stickyNotes?: Record<string, StickyNote>;
   createdAt: number;
   updatedAt: number;
 }
@@ -173,6 +182,30 @@ export function createMindmap(opts: {
     createdAt: now,
     updatedAt: now,
   };
+}
+
+export function createStickyNote(map: Mindmap, id: string, x: number, y: number): Mindmap {
+  const stickyNotes = { ...(map.stickyNotes ?? {}), [id]: { id, x, y, text: '' } };
+  return { ...map, stickyNotes, updatedAt: Date.now() };
+}
+
+export function updateStickyNote(map: Mindmap, id: string, text: string): Mindmap {
+  const note = map.stickyNotes?.[id];
+  if (!note) return map;
+  return { ...map, stickyNotes: { ...map.stickyNotes, [id]: { ...note, text: text.slice(0, 10000) } }, updatedAt: Date.now() };
+}
+
+export function moveStickyNote(map: Mindmap, id: string, x: number, y: number): Mindmap {
+  const note = map.stickyNotes?.[id];
+  if (!note || (note.x === x && note.y === y)) return map;
+  return { ...map, stickyNotes: { ...map.stickyNotes, [id]: { ...note, x, y } }, updatedAt: Date.now() };
+}
+
+export function deleteStickyNote(map: Mindmap, id: string): Mindmap {
+  if (!map.stickyNotes?.[id]) return map;
+  const stickyNotes = { ...map.stickyNotes };
+  delete stickyNotes[id];
+  return { ...map, stickyNotes, updatedAt: Date.now() };
 }
 
 export function childrenOf(map: Mindmap, id: string): MindNode[] {
@@ -403,11 +436,16 @@ export function toggleCollapse(map: Mindmap, id: string): Mindmap {
   return touch(map, { ...map.nodes, [id]: next });
 }
 
-export type NodePatch = Partial<Pick<MindNode, 'text' | 'color' | 'edgeColor' | 'edgeWidth' | 'note'>>;
+export type NodePatch = Partial<Pick<MindNode, 'text' | 'color' | 'edgeColor' | 'edgeWidth' | 'note' | 'url'>>;
 
 export function updateNode(map: Mindmap, id: string, patch: NodePatch): Mindmap {
   const node = map.nodes[id];
   if (!node) return map;
+  if (typeof patch.url === 'string') {
+    const url = patch.url.trim();
+    if (url && !isSafeNoteUrl(url, 'link')) return map;
+    patch = { ...patch, url: url || undefined };
+  }
   if (typeof patch.note === 'string') {
     const cleaned = cleanNote(patch.note);
     // An oversized note is refused so the previous one survives.

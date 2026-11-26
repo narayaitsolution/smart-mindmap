@@ -4,6 +4,17 @@ import { exportFreeMind, importFreeMind } from './freemind';
 import { ImportError } from './json';
 
 describe('FreeMind .mm', () => {
+  it('round-trips safe LINK attributes and discards unsafe links', () => {
+    const map = createMindmap({ id: 'm', title: 'T', rootText: 'Root', at: { x: 0, y: 0 } });
+    const linked = updateNode(map, map.rootId, { url: 'https://example.com/?a=1&b=2' });
+    const xml = exportFreeMind(linked);
+    expect(xml).toContain('LINK="https://example.com/?a=1&amp;b=2"');
+    const back = importFreeMind(xml);
+    expect(back.nodes[back.rootId].url).toBe('https://example.com/?a=1&b=2');
+    const unsafe = importFreeMind('<map><node TEXT="Root" LINK="javascript:alert(1)"/></map>');
+    expect(unsafe.nodes[unsafe.rootId].url).toBeUndefined();
+    expect(exportFreeMind({ ...map, nodes: { ...map.nodes, [map.rootId]: { ...map.nodes[map.rootId], url: 'javascript:alert(1)' } } })).not.toContain('LINK=');
+  });
   it('exports a <map> with nested nodes, colors and edge style', () => {
     let map = createMindmap({ id: 'm', title: 'T', rootText: 'Inti & <Co>', at: { x: 0, y: 0 } });
     map = addChild(map, map.rootId, 'c1', 'Anak');

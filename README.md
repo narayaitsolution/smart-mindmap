@@ -11,7 +11,8 @@ Browser-based mindmap editor built with React, TypeScript and Vite. Maps are sto
 - **Node moving**: drag a node to reposition it. "Tidy layout" re-arranges the map.
 - **Canvas panning and zoom**: drag the background to pan, scroll to zoom, plus zoom in/out and fit-to-screen controls.
 - **Notes**: rich-text notes per node (bold, italic, lists, links, uploaded images) with size limits.
-- **Keyboard shortcuts**: `Tab`/`Insert` add child, `Delete` remove node, `Arrow Left/Right` collapse/expand.
+- **Sticky notes**: add notes as movable cards anywhere on the canvas. Click a card to edit it in a modal. Content autosaves periodically and on Save or close. Delete asks for confirmation.
+- **Keyboard shortcuts**: `Tab`/`Insert` add child, `Delete` removes a node after confirmation, `Arrow Left/Right` collapse/expand.
 - **Open / Save / Save as**: `Open` picks a local `.mm` (FreeMind) or `.json` file. In browsers with the File System Access API (Chromium), `Save as` links the active map to a local `.mm` file and `Open` links an opened `.mm` file; the linked file is then rewritten every 15 s when it changed, with no further dialogs. `Save` and `Ctrl`/`Cmd`+`S` write the linked file, or open `Save as` when none is linked. Other browsers download a `.mm` file instead. Without a linked file the map stays in browser storage (IndexedDB), saved shortly after each edit and every 15 s. The browser warns before closing the tab only while changes are not yet stored.
 - **Import**: JSON or FreeMind (`.mm`), through `Open`.
 - **Export**: JSON, FreeMind (`.mm`), PNG, JPG, SVG and PDF.

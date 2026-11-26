@@ -216,6 +216,22 @@ button.action {
 button.action:hover:not(:disabled) {
   filter: brightness(1.1);
 }
+.field.node-actions {
+  flex-direction: row;
+  flex-wrap: nowrap;
+}
+.node-actions button {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  min-height: 40px;
+}
+button.open-url {
+  background: var(--field);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
 button.danger {
   color: var(--danger);
   border-color: var(--danger);
@@ -438,7 +454,7 @@ label span,
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
 }
 .zoombar span {
-  min-width: 80px;
+  min-width: 4ch;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -615,10 +631,67 @@ button.icon {
 .modal p {
   margin: 0;
 }
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sticky-note-modal {
+  width: min(520px, 100%);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
+}
+.sticky-note-text {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  padding: 12px;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+  line-height: 1.5;
+}
+.sticky-note-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.sticky-note-actions button {
+  width: 100%;
+}
+.sticky-note {
+  cursor: move;
+}
+.sticky-note rect {
+  fill: #f4d35e;
+  stroke: #8a6d1d;
+  stroke-width: 2;
+}
+.sticky-note path {
+  fill: #d9b83e;
+  stroke: #8a6d1d;
+  stroke-width: 2;
+}
+.sticky-note text {
+  fill: #2d2715;
+  font-size: 14px;
+  pointer-events: none;
+}
+.sticky-note:focus-visible rect {
+  stroke: var(--canvas-accent);
+  stroke-width: 4;
+}
 .modal-actions {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.sticky-note-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex-direction: row;
 }
 
 .muted {
@@ -727,21 +800,25 @@ button.icon {
   flex-wrap: nowrap;
   gap: 6px;
 }
-.note-actions button {
+.note-actions input {
   flex: 1 1 0;
   min-width: 0;
+}
+.note-actions button {
+  flex: 0 0 auto;
   padding: 3px 6px;
   font-size: 0.8rem;
 }
 button.note-clear {
   width: 100%;
-  min-height: 48px;
+  padding: 4px 6px;
   margin-top: 8px;
   font-size: 1rem;
   font-weight: 600;
 }
 .note-editor {
-  min-height: 72px;
+  min-height: calc(5 * 1.5em + 18px);
+  line-height: 1.5;
   max-height: 160px;
   overflow: auto;
   padding: 8px;
@@ -768,14 +845,17 @@ button.note-clear {
   font-weight: 700;
   margin: 4px 0;
 }
-.note-indicator {
+.note-indicator,
+.link-indicator {
   pointer-events: none;
 }
-.note-indicator circle {
+.note-indicator circle,
+.link-indicator circle {
   fill: var(--control-bg);
   stroke: var(--node-stroke);
 }
-.note-indicator path {
+.note-indicator path,
+.link-indicator path {
   stroke: var(--control-ink);
   stroke-width: 1.5;
   fill: none;

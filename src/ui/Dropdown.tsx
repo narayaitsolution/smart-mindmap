@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 interface Props {
   label: string;
   disabled?: boolean;
+  icon?: ReactNode;
   /** Renders a menu of menuitems. Otherwise the panel is a plain group. */
   menu?: boolean;
   align?: 'left' | 'right';
@@ -10,7 +11,7 @@ interface Props {
 }
 
 /** Header dropdown. Escape or a click outside closes it and returns focus to the trigger. */
-export function Dropdown({ label, disabled, menu = true, align = 'right', children }: Props) {
+export function Dropdown({ label, icon, disabled, menu = true, align = 'right', children }: Props) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -37,13 +38,15 @@ export function Dropdown({ label, disabled, menu = true, align = 'right', childr
         ref={trigger}
         type="button"
         className="dropdown-trigger"
+        aria-label={icon ? label : undefined}
+        title={icon ? label : undefined}
         aria-haspopup={menu ? 'menu' : 'true'}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
       >
-        {label}
+        {icon ?? label}
       </button>
       {open && (
         <div
