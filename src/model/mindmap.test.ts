@@ -16,6 +16,7 @@ import {
   nodeLines,
   nodeSize,
   resizeNode,
+  reparentNode,
   resolveSiblingOverlaps,
   toggleCollapse,
   updateNode,
@@ -101,6 +102,35 @@ describe('addChild / addSibling', () => {
     const snapshot = JSON.stringify(map);
     addChild(map, map.rootId, 'c1');
     expect(JSON.stringify(map)).toBe(snapshot);
+  });
+});
+
+describe('reparentNode', () => {
+  it('changes a child parent while preserving its subtree and position', () => {
+    let map = base();
+    map = addChild(map, map.rootId, 'source');
+    map = addChild(map, map.rootId, 'target');
+    map = addChild(map, 'source', 'child');
+    map = addChild(map, 'child', 'grandchild');
+    const before = { ...map.nodes.child };
+
+    const next = reparentNode(map, 'child', 'target');
+
+    expect(next.nodes.child.parentId).toBe('target');
+    expect(next.nodes.grandchild.parentId).toBe('child');
+    expect(next.nodes.child.x).toBe(before.x);
+    expect(next.nodes.child.y).toBe(before.y);
+  });
+
+  it('rejects root, missing, descendant, and same-parent targets', () => {
+    let map = base();
+    map = addChild(map, map.rootId, 'parent');
+    map = addChild(map, 'parent', 'child');
+
+    expect(reparentNode(map, map.rootId, 'parent')).toBe(map);
+    expect(reparentNode(map, 'child', 'missing')).toBe(map);
+    expect(reparentNode(map, 'parent', 'child')).toBe(map);
+    expect(reparentNode(map, 'child', map.rootId)).not.toBe(map);
   });
 });
 

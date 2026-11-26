@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { readableTextColor } from '../model/color';
 import {
   childrenOf,
+  descendantIds,
   DEFAULT_EDGE_COLOR,
   DEFAULT_EDGE_WIDTH,
   edgePath,
@@ -34,6 +35,7 @@ export interface CanvasActions {
   move(mapId: string, nodeId: string, x: number, y: number): void;
   /** Called once when a node drag ends, to separate overlapping sibling blocks. */
   settle(mapId: string, nodeId: string): void;
+  reparent?(mapId: string, nodeId: string, parentId: string): void;
   resize(mapId: string, nodeId: string, size: NodeSizePatch | null): void;
   setViewport(vp: Viewport): void;
   addChild(mapId: string, nodeId: string, side?: Side): void;
@@ -584,6 +586,17 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
     }
   };
 
+  const dropParent = (map: Mindmap, node: MindNode, clientX: number, clientY: number): MindNode | undefined => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    const x = (clientX - (rect?.left ?? 0) - viewport.x) / viewport.zoom;
+    const y = (clientY - (rect?.top ?? 0) - viewport.y) / viewport.zoom;
+    return visibleNodes(map).find((candidate) => {
+      if (candidate.id === node.id || candidate.id === node.parentId || descendantIds(map, node.id).includes(candidate.id)) return false;
+      const size = nodeSize(candidate);
+      return x >= candidate.x && x <= candidate.x + size.width && y >= candidate.y && y <= candidate.y + size.height;
+    });
+  };
+
   const end = (e: React.PointerEvent) => {
     const d = drag.current;
     if (!d) return;
@@ -599,7 +612,13 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
     }
     if (e.pointerId === d.id) {
       drag.current = null;
-      if (d.kind === 'node' && (e.clientX !== d.startX || e.clientY !== d.startY)) actions.settle(d.mapId, d.nodeId);
+      if (d.kind === 'node' && (e.clientX !== d.startX || e.clientY !== d.startY)) {
+        const map = maps.find((candidate) => candidate.id === d.mapId);
+        const node = map?.nodes[d.nodeId];
+        const parent = map && node ? dropParent(map, node, e.clientX, e.clientY) : undefined;
+        if (map && node && parent) actions.reparent?.(map.id, node.id, parent.id);
+        else actions.settle(d.mapId, d.nodeId);
+      }
     }
   };
 

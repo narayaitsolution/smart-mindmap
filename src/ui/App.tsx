@@ -338,8 +338,10 @@ export function App() {
     () => ({
       select,
       move: store.move,
-      settle: store.settle,
-      resize: store.resize,
+       settle: store.settle,
+       reparent: store.reparent,
+       resize: store.resize,
+
       setViewport: (viewport: typeof ws.viewport) => dispatch({ type: 'viewport', viewport }),
       addChild,
       addSibling,

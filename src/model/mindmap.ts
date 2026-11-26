@@ -371,6 +371,21 @@ export function resolveSiblingOverlaps(map: Mindmap, id: string): Mindmap {
   return changed ? touch(map, nodes) : map;
 }
 
+export function reparentNode(map: Mindmap, id: string, parentId: string): Mindmap {
+  const node = map.nodes[id];
+  const parent = map.nodes[parentId];
+  if (!node || !parent || id === map.rootId || id === parentId || node.parentId === parentId) return map;
+  if (parentId === map.rootId ? false : descendantIds(map, id).includes(parentId)) return map;
+  const nextNode = { ...node, parentId };
+  const nodes = { ...map.nodes, [id]: nextNode };
+  if (parent.collapsed) {
+    const nextParent = { ...parent };
+    delete nextParent.collapsed;
+    nodes[parentId] = nextParent;
+  }
+  return touch(map, nodes);
+}
+
 export function moveSubtree(map: Mindmap, id: string, x: number, y: number): Mindmap {
   const node = map.nodes[id];
   if (!node) return map;
