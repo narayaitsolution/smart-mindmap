@@ -379,12 +379,12 @@ export function App() {
           <button type="button" onClick={() => void openFile()} aria-label={t('io.open')} title={t('io.open')}>
             <Icon name="open" />
           </button>
-           <button type="button" className="icon" disabled={!activeMap} onClick={addStickyNote} aria-label={t('sticky.add')} title={t('sticky.add')}>
-             <Icon name="note" />
-           </button>
-           <button type="button" disabled={!activeMap} onClick={() => void saveNow()} aria-label={t('io.save')} title={t('io.save')}>
-             <Icon name="save" />
-           </button>
+          <button type="button" disabled={!activeMap} onClick={() => void saveNow()} aria-label={t('io.save')} title={t('io.save')}>
+            <Icon name="save" />
+          </button>
+          <button type="button" className="icon" disabled={!activeMap} onClick={addStickyNote} aria-label={t('sticky.add')} title={t('sticky.add')}>
+            <Icon name="note" />
+          </button>
           {supportsSavePicker() && (
             <button type="button" disabled={!activeMap} onClick={() => void saveAs()}>
               {t('io.saveAs')}
