@@ -375,15 +375,23 @@ export function reparentNode(map: Mindmap, id: string, parentId: string): Mindma
   const node = map.nodes[id];
   const parent = map.nodes[parentId];
   if (!node || !parent || id === map.rootId || id === parentId || node.parentId === parentId) return map;
-  if (parentId === map.rootId ? false : descendantIds(map, id).includes(parentId)) return map;
-  const nextNode = { ...node, parentId };
-  const nodes = { ...map.nodes, [id]: nextNode };
+  if (descendantIds(map, id).includes(parentId)) return map;
+
+  const childSize = nodeSize(node);
+  const nextX = parent.x + nodeSize(parent).width + GAP_X;
+  const siblingBlocks = childrenOnSide(map, parentId, 'right').filter((child) => child.id !== id);
+  const nextY = siblingBlocks.length
+    ? Math.max(...siblingBlocks.map((child) => subtreeBottom(map, child.id))) + GAP_Y
+    : parent.y + (nodeSize(parent).height - childSize.height) / 2;
+  const moved = moveSubtree(map, id, nextX, nextY);
+  const nextNode = { ...moved.nodes[id], parentId };
+  const nodes = { ...moved.nodes, [id]: nextNode };
   if (parent.collapsed) {
     const nextParent = { ...parent };
     delete nextParent.collapsed;
     nodes[parentId] = nextParent;
   }
-  return touch(map, nodes);
+  return resolveSiblingOverlaps(touch(map, nodes), id);
 }
 
 export function moveSubtree(map: Mindmap, id: string, x: number, y: number): Mindmap {

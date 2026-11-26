@@ -631,6 +631,31 @@ describe('App', () => {
     expect((screen.getByLabelText('Rename mindmap') as HTMLInputElement).value).toBe('Rencana');
   });
 
+  it('renders a draggable parent-side dot for each child line', async () => {
+    const root = await createMap();
+    fireEvent.keyDown(root, { key: 'Tab' });
+    const dots = await screen.findAllByRole('button', { name: /Drag line from Topic/ });
+    expect(dots).toHaveLength(1);
+    expect(dots[0].classList.contains('edge-parent-dot')).toBe(true);
+  });
+
+  it('drags a line endpoint onto another node to change parent', async () => {
+    const root = await createMap();
+    fireEvent.keyDown(root, { key: 'Tab' });
+    fireEvent.keyDown(root, { key: 'Tab' });
+    const nodes = await screen.findAllByRole('button', { name: 'Node: Topic' });
+    const dot = (await screen.findAllByRole('button', { name: 'Drag line from Topic to change its parent' }))[0];
+    const target = nodes[1];
+    const targetTransform = /translate\(([-\d.e]+) ([-\d.e]+)\)/.exec(target.getAttribute('transform') ?? '')!;
+    const targetX = Number(targetTransform[1]) + 10;
+    const targetY = Number(targetTransform[2]) + 10;
+    const childBefore = nodes[0].getAttribute('transform');
+    fireEvent.pointerDown(dot, { clientX: 200, clientY: 200, pointerId: 1, button: 0 });
+    fireEvent.pointerMove(dot, { clientX: targetX, clientY: targetY, pointerId: 1 });
+    fireEvent.pointerUp(dot, { clientX: targetX, clientY: targetY, pointerId: 1 });
+    expect(nodes[0].getAttribute('transform')).not.toBe(childBefore);
+  });
+
   it('drags a node and its edge follows', async () => {
     const root = await createMap();
     fireEvent.keyDown(root, { key: 'Tab' });

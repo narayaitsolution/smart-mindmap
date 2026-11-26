@@ -403,6 +403,27 @@ label span,
 .edge[data-default='true'] {
   stroke: var(--edge-default);
 }
+.edge-parent-dot {
+  fill: var(--control-bg);
+  stroke: var(--canvas-accent);
+  stroke-width: 2;
+  cursor: grab;
+  pointer-events: all;
+}
+.edge-parent-dot:hover,
+.edge-parent-dot:focus-visible {
+  fill: var(--canvas-accent);
+  stroke: var(--control-bg);
+  outline: none;
+}
+.edge-parent-dot:active {
+  cursor: grabbing;
+}
+@media (pointer: coarse) {
+  .edge-parent-dot {
+    r: 11px;
+  }
+}
 .node[aria-pressed='true'] .node-box {
   stroke: var(--canvas-accent);
   stroke-width: 3;

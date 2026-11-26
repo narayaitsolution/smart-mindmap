@@ -106,20 +106,32 @@ describe('addChild / addSibling', () => {
 });
 
 describe('reparentNode', () => {
-  it('changes a child parent while preserving its subtree and position', () => {
+  it('moves a child subtree beside its new parent and keeps descendants together', () => {
     let map = base();
     map = addChild(map, map.rootId, 'source');
     map = addChild(map, map.rootId, 'target');
     map = addChild(map, 'source', 'child');
     map = addChild(map, 'child', 'grandchild');
-    const before = { ...map.nodes.child };
+    const beforeDelta = map.nodes.grandchild.y - map.nodes.child.y;
 
     const next = reparentNode(map, 'child', 'target');
 
     expect(next.nodes.child.parentId).toBe('target');
     expect(next.nodes.grandchild.parentId).toBe('child');
-    expect(next.nodes.child.x).toBe(before.x);
-    expect(next.nodes.child.y).toBe(before.y);
+    expect(next.nodes.child.x).toBe(next.nodes.target.x + nodeSize(next.nodes.target).width + 80);
+    expect(next.nodes.grandchild.y - next.nodes.child.y).toBe(beforeDelta);
+  });
+
+  it('expands a collapsed target and separates the reparented subtree from siblings', () => {
+    let map = base();
+    map = addChild(map, map.rootId, 'target');
+    map = addChild(map, 'target', 'existing');
+    map = toggleCollapse(map, 'target');
+    map = addChild(map, map.rootId, 'moving');
+    const next = reparentNode(map, 'moving', 'target');
+
+    expect(next.nodes.target.collapsed).toBeUndefined();
+    expect(next.nodes.moving.y).toBeGreaterThanOrEqual(next.nodes.existing.y + nodeSize(next.nodes.existing).height + GAP_Y);
   });
 
   it('rejects root, missing, descendant, and same-parent targets', () => {

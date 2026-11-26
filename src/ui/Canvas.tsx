@@ -72,6 +72,7 @@ type Pt = { x: number; y: number };
 type Drag =
   | { kind: 'resize'; id: number; mapId: string; nodeId: string; handle: Handle; startX: number; startY: number; width: number; height: number }
   | { kind: 'node'; id: number; mapId: string; nodeId: string; startX: number; startY: number; originX: number; originY: number }
+  | { kind: 'reparent'; id: number; mapId: string; nodeId: string; startX: number; startY: number }
   | { kind: 'sticky'; id: number; mapId: string; noteId: string; startX: number; startY: number; originX: number; originY: number }
   | { kind: 'pan'; id: number; touch: boolean; startX: number; startY: number; originX: number; originY: number; last: Pt }
   /** Two touch fingers: `from` are their positions when the pinch began, `origin` the viewport then. */
@@ -236,7 +237,7 @@ function GhostNode({ node, opacity }: { node: MindNode; opacity: number }) {
   );
 }
 
-function MapLayer({ map, frame, selected, editingId, t, onResizeDown, onResizeReset, onNodeDown, onNodeClick, onNodeKey, onNodeEdit, onToggle, onAddChild, onEditCommit, onEditCancel, onStickyDown, onStickyOpen }: {
+function MapLayer({ map, frame, selected, editingId, t, onResizeDown, onResizeReset, onNodeDown, onNodeClick, onNodeKey, onNodeEdit, onToggle, onAddChild, onEdgeDown, onEditCommit, onEditCancel, onStickyDown, onStickyOpen }: {
   map: Mindmap;
   frame: MotionFrame;
   selected: string | null;
@@ -250,6 +251,7 @@ function MapLayer({ map, frame, selected, editingId, t, onResizeDown, onResizeRe
   onNodeEdit: (map: Mindmap, node: MindNode) => void;
   onToggle: (map: Mindmap, node: MindNode) => void;
   onAddChild: (map: Mindmap, node: MindNode, side: Side) => void;
+  onEdgeDown: (e: React.PointerEvent<SVGCircleElement>, map: Mindmap, node: MindNode) => void;
   onEditCommit: (text: string) => void;
   onEditCancel: () => void;
   onStickyDown: (e: React.PointerEvent<SVGGElement>, map: Mindmap, note: StickyNote) => void;
@@ -259,19 +261,36 @@ function MapLayer({ map, frame, selected, editingId, t, onResizeDown, onResizeRe
   // Displayed position: entering nodes are mid-flight, every other node sits where the layout put it.
   const shown = (n: MindNode): MindNode => (frame.nodes[n.id] ? { ...n, ...frame.nodes[n.id] } : n);
   const ghostById = new Map(frame.ghosts.map((g) => [g.id, g]));
-  const edgeOf = (n: MindNode, parent: MindNode) => (
-    <path
-      key={`e-${n.id}`}
-      className="edge"
-      d={edgePath(parent, n)}
-      fill="none"
-      stroke={n.edgeColor ?? DEFAULT_EDGE_COLOR}
-      strokeWidth={n.edgeWidth ?? DEFAULT_EDGE_WIDTH}
-      strokeLinecap="round"
-      data-default={n.edgeColor ? undefined : 'true'}
-      opacity={frame.opacity[n.id]}
-    />
-  );
+  const edgeOf = (n: MindNode, parent: MindNode) => {
+    const parentSize = nodeSize(parent);
+    const childSize = nodeSize(n);
+    const childIsLeft = n.x + childSize.width < parent.x;
+    const startX = childIsLeft ? parent.x : parent.x + parentSize.width;
+    const startY = parent.y + parentSize.height / 2;
+    return (
+      <g key={`e-${n.id}`} opacity={frame.opacity[n.id]}>
+        <path
+          className="edge"
+          d={edgePath(parent, n)}
+          fill="none"
+          stroke={n.edgeColor ?? DEFAULT_EDGE_COLOR}
+          strokeWidth={n.edgeWidth ?? DEFAULT_EDGE_WIDTH}
+          strokeLinecap="round"
+          data-default={n.edgeColor ? undefined : 'true'}
+        />
+        <circle
+          className="edge-parent-dot"
+          cx={startX}
+          cy={startY}
+          r={6}
+          role="button"
+          tabIndex={0}
+          aria-label={t('node.reparentHandle', { text: n.text })}
+          onPointerDown={(e) => onEdgeDown(e, map, n)}
+        />
+      </g>
+    );
+  };
   return (
     <g>
       {nodes.map((n) => {
@@ -479,6 +498,14 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
 
+  const onEdgeDown = (e: React.PointerEvent<SVGCircleElement>, map: Mindmap, node: MindNode) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    actions.select({ mapId: map.id, nodeId: node.id });
+    drag.current = { kind: 'reparent', id: e.pointerId, mapId: map.id, nodeId: node.id, startX: e.clientX, startY: e.clientY };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
   const onResizeDown = (e: React.PointerEvent<SVGElement>, map: Mindmap, node: MindNode, handle: Handle) => {
     if (e.button !== 0) return;
     if (e.pointerType === 'touch' && drag.current) return;
@@ -579,6 +606,7 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
       } else patch.height = d.height + dy / viewport.zoom;
       actions.resize(d.mapId, d.nodeId, patch);
     } else if (d.kind === 'node') actions.move(d.mapId, d.nodeId, d.originX + dx / viewport.zoom, d.originY + dy / viewport.zoom);
+    else if (d.kind === 'reparent') return;
     else if (d.kind === 'sticky') actions.moveStickyNote?.(d.mapId, d.noteId, d.originX + dx / viewport.zoom, d.originY + dy / viewport.zoom);
     else {
       d.last = local(e);
@@ -612,12 +640,12 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
     }
     if (e.pointerId === d.id) {
       drag.current = null;
-      if (d.kind === 'node' && (e.clientX !== d.startX || e.clientY !== d.startY)) {
+      if ((d.kind === 'node' || d.kind === 'reparent') && (e.clientX !== d.startX || e.clientY !== d.startY)) {
         const map = maps.find((candidate) => candidate.id === d.mapId);
         const node = map?.nodes[d.nodeId];
         const parent = map && node ? dropParent(map, node, e.clientX, e.clientY) : undefined;
         if (map && node && parent) actions.reparent?.(map.id, node.id, parent.id);
-        else actions.settle(d.mapId, d.nodeId);
+        else if (d.kind === 'node') actions.settle(d.mapId, d.nodeId);
       }
     }
   };
@@ -667,8 +695,10 @@ export function Canvas({ maps, selected, viewport, t, actions, editing, onEditCo
             onNodeKey={onNodeKey}
             onNodeEdit={(m, n) => actions.rename({ mapId: m.id, nodeId: n.id })}
             onToggle={(m, n) => actions.toggle(m.id, n.id)}
-            onAddChild={(m, n, side) => actions.addChild(m.id, n.id, side)}
-             onEditCommit={onEditCommit}
+             onAddChild={(m, n, side) => actions.addChild(m.id, n.id, side)}
+             onEdgeDown={onEdgeDown}
+              onEditCommit={onEditCommit}
+
              onEditCancel={onEditCancel}
              onStickyDown={onStickyDown}
              onStickyOpen={(m, n) => onStickyNoteOpen?.(m.id, n.id)}

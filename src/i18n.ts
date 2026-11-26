@@ -73,6 +73,7 @@ export const messages = {
   'node.openUrl': 'Open URL',
   'node.addChildLeft': 'Add child on the left',
   'node.addChildRight': 'Add child on the right',
+  'node.reparentHandle': 'Drag line from {text} to change its parent',
   'node.width': 'Width',
   'node.height': 'Height',
   'node.resetSize': 'Reset size',
